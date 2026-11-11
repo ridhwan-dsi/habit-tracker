@@ -181,3 +181,14 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .c .sk { width:18px; height:18px; fill:none; stroke:var(--muted); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .c.skp { background-image:repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.08) 6px 8px); }
 .seg button[data-act=setNum] { font-size:12.5px; }
+/* v4.7: selection shows on every row (sub-habits and lined rows too); names line up whether or not a row has an arrow;
+   sub-habit divider stops short of the card's left edge */
+i.chev { display:block; }
+.sublines .hrow.sub + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub .c:not(.tdy) { box-shadow:none; }
+.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.sublines .hrow.sub + .hrow.sub .nm::before { content:''; position:absolute; left:26px; right:0; top:0; height:1px; background:var(--subln); z-index:1; }
+.sublines .hrow.sub + .hrow.sub .c { background-image:linear-gradient(var(--subln), var(--subln)); background-size:100% 1px; background-repeat:no-repeat; }
+.hrow.sel .nmi, .hrow.sub.sel .nmi, .sublines .hrow.sub.sel + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), 6px 0 6px -6px rgba(0,0,0,.35); }
+.hrow.sel .c, .hrow.sub.sel .c, .hrow.sub.sel .c.tdy.off { background-color:var(--card2); }
+.hrow.ctx .nm { cursor:default; } .hrow.ctx .nmi span { font-style:italic; font-weight:500 !important; opacity:.75; }

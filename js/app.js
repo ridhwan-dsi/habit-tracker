@@ -84,7 +84,10 @@
   /* Fold modes (bottom bar): 'open' all expanded, 'shut' all collapsed, 'man' each group's own default (h.fold0, set in Edit).
      Tapping a group overrides it until the mode changes (ui.fx). In 'shut', opening one group closes the others. */
   function foldMode() { return S.d.ui.foldMode || 'man'; }
+  // Starred view: a group that isn't starred itself only frames its starred sub-habits — always open, italic, can't be edited or selected.
+  function ctxGrp(h) { return !!h && view() === 'star' && !h.parent && !h.star && isGroup(h); }
   function folded(id) {
+    if (ctxGrp(S.habit(id))) return false;
     var fx = S.d.ui.fx || {}, m = foldMode(), h = S.habit(id);
     if (id in fx) return fx[id];
     return m === 'open' ? false : m === 'shut' ? true : !!(h && h.fold0);
@@ -142,7 +145,7 @@
       if (h.parent && S.habit(h.parent)) return;
       if (!base(h, v)) return;
       var ss = subs(h.id).filter(function (x) { return base(x, v) && member(x, v); });
-      if (member(h, v) || ss.length) { keep[h.id] = 1; ss.forEach(function (x) { keep[x.id] = 1; }); }
+      if (member(h, v) || ss.length) { if (member(h, v) || v !== 'star' || S.d.settings.starGroups !== false) keep[h.id] = 1; ss.forEach(function (x) { keep[x.id] = 1; }); }
     });
     return all.filter(function (h) { return keep[h.id]; });
   }
@@ -163,10 +166,11 @@
       // Top-level habits in order; each group card holds its parent row and (unless folded) its sub-habits.
       var shown = {}; list.forEach(function (h) { shown[h.id] = 1; });
       var rowHtml = function (h, cls, grp) {
-        var wt = (v === 'win' || winOwn(h)) && winTxt(h);
+        var wt = (v === 'win' || winOwn(h)) && winTxt(h), cx = grp && ctxGrp(h);
+        if (cx) { grp = false; cls += ' ctx'; }
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
-          (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : '') +
+          (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
           '<span style="color:' + esc(h.color) + '">' + esc(h.name) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
@@ -178,7 +182,7 @@
           rowHtml(h, ' gtop rt' + (ss.length ? '' : ' rb'), grp) +
           ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>';
       };
-      var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent); }), rows;
+      var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent) || !shown[h.parent]; }), rows;
       if (mode === 'off' && (v === 'all' || v === 'star') && S.tabs().length) {
         // One page, a header per tab: habits with no tab first, then each tab's habits under its name.
         var by = function (id) { return tops.filter(function (h) { var t = S.tab(h.tab); return (t ? t.id : null) === id; }); };
@@ -266,6 +270,8 @@
   /* ---- Select mode (hold a habit name and release) ---- */
   var sel = null;   // { id: true } while selecting
   function allStarred() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.star; }); }
+  function selIn() { return sel ? S.habits().filter(function (h) { return sel[h.id] && !isGroup(h); }).map(function (h) { return h.id; }) : []; }   // display order
+  function selOut() { return sel ? S.habits().filter(function (h) { return sel[h.id] && h.parent && S.habit(h.parent); }).map(function (h) { return h.id; }) : []; }
   function allArchived() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.archived; }); }
   function selStart(id) {
     if (!sel) { sel = {}; history.pushState({ sel: 1 }, ''); }
@@ -350,6 +356,7 @@
     quietClick = false;
     var cell = e.target.closest('.c'), nm = e.target.closest('.hrow .nm');
     if (!cell && !nm) return;
+    if (nm && nm.closest('.hrow.ctx')) return;
     var el = cell || nm;
     lp = { el: el, cell: cell, id: nm ? nm.dataset.id : null, x: e.clientX, y: e.clientY, fired: false, pid: e.pointerId };
     lp.t = setTimeout(function () {
@@ -574,6 +581,7 @@
         return '<button class="' + ((s.weekStart || 0) === w[0] ? 'on' : '') + '" data-act="setNum" data-k="weekStart" data-v="' + w[0] + '">' + w[1] + '</button>';
       }).join('') + '</div></div>' +
       '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
+      '<button class="mi tg flat" data-act="setTg" data-k="starGroups"><span>In Starred, show the group above a starred sub-habit</span><span class="box' + (s.starGroups !== false ? ' on' : '') + '">' + (s.starGroups !== false ? ICON.check : '') + '</span></button>' +
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
       '<p class="small muted">Google sign-in and sync to your Drive arrive in a later version. Everything is saved on this device.</p>' +
@@ -646,6 +654,7 @@
     add: function () { openEdit(null); },   // a new habit lands in the tab you're looking at (or starred, on Starred)
     edit: function (el) {
       var id = el.dataset.id, h = S.habit(id);
+      if (ctxGrp(h)) return;
       if (sel) return selToggle(id);
       if (h && isGroup(h)) { setFold([id], !folded(id)); return; }   // tap a group = fold / unfold
       openEdit(id);
@@ -670,7 +679,41 @@
       var g = Object.keys(sel).some(function (id) { var h = S.habit(id); return h && isGroup(h); });
       showSheet('selmore', '<button class="mi" data-act="selColor">Change colour</button>' +
         '<button class="mi" data-act="selTab">Move to tab</button>' +
+        (selIn().length ? '<button class="mi" data-act="selIntoAsk">Put into a group…</button>' : '') +
+        (selOut().length ? '<button class="mi" data-act="selOut">Take out of group</button>' : '') +
         (g ? '<button class="mi" data-act="selFold">Fold / unfold group</button>' : ''), 'menu');
+    },
+    // Several selected habits go under one group together, or all come out of their groups at once.
+    selIntoAsk: function () {
+      closeSheet(function () {
+        var ts = S.habits().filter(function (h) { return !h.parent && !h.archived && !sel[h.id]; });
+        if (!ts.length) return App.toast('No habit to put them under');
+        showSheet('selinto', '<h3>Put ' + selIn().length + ' under…</h3>' + ts.map(function (h) {
+          return '<button class="mi trow" data-act="selInto" data-id="' + h.id + '"><span style="color:' + esc(h.color) + '">' + esc(h.name) + '</span>' + (isGroup(h) ? '<small class="muted">' + subs(h.id).length + '</small>' : '') + '</button>';
+        }).join(''), 'menu');
+      });
+    },
+    selInto: function (el) {
+      var g = S.habit(el.dataset.id), ids = selIn(), skip = Object.keys(sel).length - ids.length;
+      var order = S.habits().map(function (h) { return h.id; }).filter(function (id) { return ids.indexOf(id) < 0; });
+      var last = [g.id].concat(subs(g.id).map(function (x) { return x.id; })).pop();
+      order.splice.apply(order, [order.indexOf(last) + 1, 0].concat(ids));
+      S.reorder(order);
+      ids.forEach(function (id) { var h = S.habit(id); h.parent = g.id; S.putHabit(h); });
+      if (folded(g.id)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[g.id] = false; S.saveUi(); }
+      closeSheet(function () { selEnd(function () { App.toast('Moved ' + ids.length + ' into ' + g.name + (skip ? ' · groups can’t go inside a group' : '')); }); });
+    },
+    selOut: function () {
+      var ids = selOut(), order = S.habits().map(function (h) { return h.id; }).filter(function (id) { return ids.indexOf(id) < 0; }), by = {};
+      ids.forEach(function (id) { var p = S.habit(id).parent; (by[p] = by[p] || []).push(id); });
+      Object.keys(by).forEach(function (p) {   // they land just after their own group, keeping their order
+        var at = 0; order.forEach(function (id, i) { if (id === p || S.habit(id).parent === p) at = i + 1; });
+        order.splice.apply(order, [at, 0].concat(by[p]));
+      });
+      ids.forEach(function (id) { S.habit(id).parent = null; });
+      S.reorder(order);
+      ids.forEach(function (id) { S.putHabit(S.habit(id)); });
+      closeSheet(function () { selEnd(function () { App.toast('Moved ' + ids.length + ' out of the group'); }); });
     },
     selTab: function () { closeSheet(openMoveToTab); },
     moveTo: function (el) {
