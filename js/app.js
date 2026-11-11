@@ -309,7 +309,9 @@
   // Habit-name column takes whatever is left after 4 day columns; older days scroll in from the right.
   function sizeCols() {
     // Landscape phone: keep the portrait name width; the extra width shows more day columns (SL 33)
+    // Laptop/desktop (≥ 900px wide): a fixed 300px name column; the page widens to show as many days as fit (up to 31).
     var land = window.innerWidth > window.innerHeight && window.innerHeight <= 600;
+    if (window.innerWidth >= 900) { document.documentElement.style.setProperty('--nw', '300px'); return; }
     var w = Math.min(land ? window.innerHeight : window.innerWidth, 720) - 12;   // 12px right gutter; the left gutter is inside .nm
     document.documentElement.style.setProperty('--nw', Math.max(120, w - 4 * CELL) + 'px');
   }

@@ -260,3 +260,24 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 .offs { display:flex; flex-direction:column; gap:3px; } .offs input { text-align:center; } .offs em { font-style:normal; font-size:11px; color:var(--muted); }
 .ptprev { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 0 8px; } .ptprev div { background:var(--card2); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; }
 .ptprev span { font-size:11.5px; color:var(--muted); } .ptprev b { font-size:17px; }
+
+/* ---- Desktop / laptop (≥ 900px): wide page, more days, stats and weight in two columns, sheets as centred dialogs ---- */
+@media (min-width:900px) {
+  #app { max-width:min(1760px, calc(300px + 12px + 31 * 48px + 24px)); padding:0 12px; }
+  .top { padding:14px 6px 8px 8px; } .top h1 { font-size:23px; }
+  .demobar { border-radius:12px; }
+  .nmi { border-radius:12px 0 0 12px; }
+  .hrow .c:hover { background:var(--card2); } .hrow .nm:hover .nmi { background:var(--card2); }
+  .rib { justify-content:center; gap:8px; border-top:0; background:none; padding:6px 0 10px; }
+  .rbtn { flex:0 0 96px; max-width:96px; }
+  .sheet:not(.page):not(.menu) { left:50%; right:auto; bottom:auto; top:8vh; transform:translateX(-50%); width:560px; max-height:84vh; border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .sheet.page { max-width:none; padding-left:max(24px, calc((100vw - 1120px) / 2)); padding-right:max(24px, calc((100vw - 1120px) / 2)); }
+  .sheet.page .form { max-width:640px; margin:0 auto; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; padding:0 4px 24px; }
+  .stats > .stsub, .stats > .tiles, .stats > .seg, .stats > .wnow, .stats > .wset { grid-column:1 / -1; }
+  .stats > .tiles { grid-template-columns:repeat(4,1fr); }
+  .stats > .seg { max-width:420px; }
+  .wdlg { left:50%; right:auto; top:8vh; transform:translateX(-50%); width:520px; border-radius:18px; padding-top:18px; }
+  .chart { max-height:210px; margin:0 auto; }
+  .cal { max-width:420px; margin:0 auto; } .calh { max-width:440px; margin-left:auto; margin-right:auto; }
+}
