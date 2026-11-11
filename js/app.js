@@ -65,7 +65,7 @@
     var r = groupRes(h, d.k), cls = 'c grp-c' + (d.k === S.today() ? ' tdy' : ''), inner;
     if (h.agg && h.agg.t === 'count') {
       if (r.ok) { cls += ' ok'; inner = ICON.tick; }
-      else if (r.done) { cls += ' part'; inner = '<b>' + r.done + '</b><i>of ' + r.need + '</i>'; }
+      else if (r.done && h.agg.prog !== false) { cls += ' part'; inner = '<b>' + r.done + '</b><i>of ' + r.need + '</i>'; }
       else inner = ICON.cross;
     } else {
       if (r.sum) cls += r.ok ? ' ok' : ' part';
@@ -456,7 +456,8 @@
       '<div class="fl">Group result' + seg('agg', a.t, [['count', 'Tick when done'], ['sum', 'Sum of values']]) +
       '<span class="small muted">' + (a.t === 'count' ? 'The group gets a tick when enough of its sub-habits are done that day.' : 'The group shows the total of its sub-habits (a tick counts as 1).') + '</span></div>' +
       (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + (a.n || 1) + '"> sub-habits are done</label>' +
-          '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now. Until then the group shows how many are done, e.g. “2 of ' + (a.n || 1) + '”.' + ((a.n || 1) > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + '</span>'
+          '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now.' + ((a.n || 1) > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + '</span>' +
+          '<button class="mi tg flat" data-act="ef" data-f="prog"><span>Show progress (e.g. “2 of ' + (a.n || 1) + '”)<br><span class="small muted">Off: the group stays ✗ until it’s done.</span></span><span class="box' + (a.prog !== false ? ' on' : '') + '">' + (a.prog !== false ? ICON.check : '') + '</span></button>'
         : '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min" autocomplete="off"></label>' +
           '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>');
     var html =
@@ -703,6 +704,7 @@
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') { h.freq.t = v; if (v === 'days' && !h.freq.days.length) h.freq.days = [0, 1, 2, 3, 4, 5, 6]; }
       else if (f === 'tab') h.tab = v || null;
+      else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
       else if (f === 'winClear') h.win = { from: '', to: '' };
       else if (f === 'wd') { var i = +v, a = h.freq.days, p = a.indexOf(i); if (p >= 0) a.splice(p, 1); else a.push(i); a.sort(); }
       drawEdit();
