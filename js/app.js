@@ -22,7 +22,8 @@
     archive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg>',
     unarchive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M12 17v-6M9.5 13.5L12 11l2.5 2.5"/></svg>',
     bin: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
-    check: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+    check: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    fold: '<svg class="i" viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>'
   };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
@@ -41,6 +42,34 @@
     return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
   }
 
+  /* ---- Groups: one level. A habit with sub-habits is a group; its cells show the sub-habits' result
+     (Sum of their values, or a tick when N of them are done). Archived sub-habits don't count. ---- */
+  function subs(id) { return S.habits().filter(function (x) { return x.parent === id; }); }
+  function liveSubs(id) { return subs(id).filter(function (x) { return !x.archived; }); }
+  function isGroup(h) { return !h.parent && subs(h.id).length > 0; }
+  function subDone(x, k) { var v = S.val(x.id, k); return v != null && (x.type === 'yn' ? !!v : met(x, v)); }
+  function groupRes(h, k) {
+    var ss = liveSubs(h.id), sum = 0, done = 0;
+    ss.forEach(function (x) { var v = S.val(x.id, k); if (v != null) sum += x.type === 'yn' ? (v ? 1 : 0) : v; if (subDone(x, k)) done++; });
+    var need = h.agg && h.agg.t === 'count' ? Math.min(h.agg.n || ss.length, ss.length) : 0;
+    var ok = h.agg && h.agg.t === 'count' ? (ss.length > 0 && done >= need) : (h.target > 0 ? sum >= h.target : false);
+    return { sum: num(sum), done: done, total: ss.length, need: need, ok: ok };
+  }
+  function groupCell(h, d) {
+    var r = groupRes(h, d.k), cls = 'c grp-c' + (d.k === S.today() ? ' tdy' : ''), inner;
+    if (h.agg && h.agg.t === 'count') {
+      if (r.ok) { cls += ' ok'; inner = ICON.tick; }
+      else if (r.done) { cls += ' part'; inner = '<b>' + r.done + '</b><i>of ' + r.need + '</i>'; }
+      else inner = ICON.cross;
+    } else {
+      if (r.sum) cls += r.ok ? ' ok' : ' part';
+      inner = '<b>' + r.sum + '</b>' + (h.unit ? '<i>' + esc(h.unit) + '</i>' : '');
+    }
+    return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
+  }
+  function anyCell(h, d) { return isGroup(h) ? groupCell(h, d) : cellHtml(h, d); }
+  function folded(id) { return !!(S.d.ui.fold && S.d.ui.fold[id]); }
+
   var App = {
     render: function () {
       var sc = document.getElementById('sc'), keep = sc ? { l: sc.scrollLeft, t: sc.scrollTop } : null;
@@ -49,14 +78,27 @@
       var head = '<div class="drow"><div class="nm"></div>' + days.map(function (d, i) {
         return '<div class="dh' + (i === 0 ? ' tdy' : '') + '"><span>' + WD[d.dt.getDay()].toUpperCase() + '</span><b>' + d.dt.getDate() + '</b></div>';
       }).join('') + '</div>';
-      var rows = list.map(function (h) {
-        return '<div class="hrow' + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '"><div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi"><span style="color:' + esc(h.color) + '">' + esc(h.name) + '</span></div></div>' +
-          days.map(function (d) { return cellHtml(h, d); }).join('') + '</div>';
+      // Top-level habits in order; each group card holds its parent row and (unless folded) its sub-habits.
+      var shown = {}; list.forEach(function (h) { shown[h.id] = 1; });
+      var rowHtml = function (h, cls, grp) {
+        return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '">' +
+          '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
+          (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : '') +
+          '<span style="color:' + esc(h.color) + '">' + esc(h.name) + '</span>' +
+          (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
+          days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
+      };
+      var rows = list.filter(function (h) { return !h.parent || !S.habit(h.parent); }).map(function (h) {
+        var grp = isGroup(h), ss = grp && !folded(h.id) ? subs(h.id).filter(function (x) { return shown[x.id]; }) : [];
+        return '<div class="grp' + (grp ? ' isgrp' : '') + '" data-grp="' + h.id + '">' +
+          rowHtml(h, ' gtop rt' + (ss.length ? '' : ' rb'), grp) +
+          ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>';
       }).join('');
       var n = sel ? Object.keys(sel).length : 0, f = S.d.settings;
       var bar = sel ?
         '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
+        (Object.keys(sel).some(function (id) { var h = S.habit(id); return h && isGroup(h); }) ? '<button class="ib" data-act="selFold" aria-label="Fold or unfold">' + ICON.fold + '</button>' : '') +
         '<button class="ib" data-act="selColor" aria-label="Change colour"' + (n ? '' : ' disabled') + '>' + ICON.palette + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button></header>'
@@ -74,10 +116,12 @@
     },
     refreshRow: function (hid) {   // after a mark: redraw one row's cells, keep scroll
       var h = S.habit(hid); if (!h) return App.render();
-      if (visible([h]).length === 0) return App.render();   // Hide entered: row leaves once today is done
+      var g = h.parent && S.habit(h.parent);
+      if (visible([h]).length === 0 || (g && visible([g]).length === 0)) return App.render();   // Hide entered: row leaves once today is done
       S.days(NDAYS).forEach(function (d) {
         var el = root.querySelector('.c[data-h="' + hid + '"][data-k="' + d.k + '"]');
         if (el) el.outerHTML = cellHtml(h, d);
+        if (h.parent) { var g = S.habit(h.parent), ge = g && root.querySelector('.c[data-h="' + g.id + '"][data-k="' + d.k + '"]'); if (ge) ge.outerHTML = groupCell(g, d); }
       });
     },
     syncChanged: function () { if (sheetOpen === 'settings') openSettings(); },
@@ -87,6 +131,7 @@
 
   /* ---- Filter: Hide archived, Hide entered (looks at TODAY only) ---- */
   function enteredToday(h) {
+    if (isGroup(h)) { var t = S.today(), ss = liveSubs(h.id); return groupRes(h, t).ok || (ss.length > 0 && ss.every(function (x) { return enteredToday(x); })); }
     var v = S.val(h.id, S.today());
     if (v == null) return false;
     return h.type === 'yn' ? !!v : met(h, v);   // measurable leaves only once today's target is met
@@ -95,9 +140,17 @@
     var f = S.d.settings;
     return list.filter(function (h) {
       if (h.archived && f.hideArchived) return false;
+      var g = h.parent && S.habit(h.parent);
+      if (g && g.archived && f.hideArchived) return false;   // archiving a group hides its sub-habits too
       if (f.hideEntered && !sel && enteredToday(h)) return false;   // select mode shows everything you could act on
       return true;
     });
+  }
+
+  function setFold(ids, on) {
+    var F = S.d.ui.fold = S.d.ui.fold || {};
+    ids.forEach(function (id) { if (on) F[id] = 1; else delete F[id]; });
+    S.saveUi(); App.render();
   }
 
   /* ---- Select mode (hold a habit name and release) ---- */
@@ -163,6 +216,7 @@
   /* ---- Mark a day ---- */
   function mark(cell) {
     var h = S.habit(cell.dataset.h), k = cell.dataset.k; if (!h) return;
+    if (isGroup(h)) return App.toast('A group shows its sub-habits’ result — mark those');
     if (h.type === 'num') return askNumber(h, k);
     S.setVal(h.id, k, S.val(h.id, k) ? null : 1);
     if (navigator.vibrate) navigator.vibrate(15);
@@ -193,7 +247,10 @@
     if (!lp) return;
     var dx = e.clientX - lp.x, dy = e.clientY - lp.y;
     if (!lp.fired) { if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { lpCancel(); lp = null; } return; }
-    if (lp.id && Math.abs(dy) > 8) { var p = lp; lp = null; dragStart(p, e); }
+    if (!lp.id) return;
+    var p;
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { p = lp; lp = null; shiftStart(p, e); }
+    else if (Math.abs(dy) > 8) { p = lp; lp = null; dragStart(p, e); }
   });
   root.addEventListener('pointercancel', function () { if (drag) dragEnd(true); lpCancel(); lp = null; });
   root.addEventListener('pointerup', function () {
@@ -211,24 +268,63 @@
   root.addEventListener('contextmenu', function (e) { if (e.target.closest('.c, .nm')) e.preventDefault(); });
 
   /* ---- Drag to reorder: the row follows the finger; neighbours swap as it passes their middle ---- */
+  // A sub-habit moves among its group's sub-habits; a top-level habit moves with its whole group card.
   function dragStart(p, e) {
-    var row = p.el.closest('.hrow'), r = row.getBoundingClientRect();
-    row.classList.remove('held'); row.classList.add('drag');
-    drag = { row: row, id: p.id, grab: p.y - r.top, y: e.clientY, sc: document.getElementById('sc'), moved: true };
+    var hr = p.el.closest('.hrow'), sub = hr.classList.contains('sub'), row = sub ? hr : hr.closest('.grp'), r = row.getBoundingClientRect();
+    hr.classList.remove('held'); row.classList.add('drag');
+    drag = { mode: 'y', row: row, sib: sub ? 'sub' : 'grp', id: p.id, grab: p.y - r.top, y: e.clientY, sc: document.getElementById('sc') };
     drag.auto = requestAnimationFrame(autoScroll);
     dragMove(e);
   }
+  // Hold and slide right = put it inside the group above; slide left = take it out of its group.
+  var SHIFT = 36;
+  function shiftStart(p, e) {
+    var hr = p.el.closest('.hrow'); hr.classList.remove('held'); hr.classList.add('shift');
+    drag = { mode: 'x', row: hr, id: p.id, x0: p.x, dx: 0 };
+    dragMove(e);
+  }
+  function shiftEnd() {
+    var d = drag, h = S.habit(d.id), dx = d.dx;
+    var ids = function () { return [].map.call(document.querySelectorAll('#grid .hrow'), function (r) { return r.dataset.row; }); };
+    var lastOf = function (grp) {   // last row of a group card, not counting the row being moved
+      var rs = [].filter.call(grp.querySelectorAll('.hrow'), function (r) { return r.dataset.row !== d.id; });
+      return rs[rs.length - 1].dataset.row;
+    };
+    var moveAfter = function (list, id, afterId) { list.splice(list.indexOf(id), 1); list.splice(list.indexOf(afterId) + 1, 0, id); return list; };
+    if (dx > SHIFT && !h.parent) {
+      if (isGroup(h)) return App.toast('A group can’t go inside another group');
+      var above = d.row.closest('.grp').previousElementSibling;
+      if (!above || !above.classList.contains('grp')) return App.toast('No habit above to go under');
+      var g = S.habit(above.dataset.grp); if (g.parent) return;
+      S.reorder(moveAfter(ids(), h.id, lastOf(above)));
+      h.parent = g.id; S.putHabit(h);
+      if (folded(g.id)) { delete S.d.ui.fold[g.id]; S.saveUi(); }
+      App.toast('Moved into ' + g.name);
+    } else if (dx < -SHIFT && h.parent) {
+      var grp = d.row.closest('.grp');
+      S.reorder(moveAfter(ids(), h.id, lastOf(grp)));
+      h.parent = null; S.putHabit(h);
+      App.toast('Moved out of the group');
+    }
+  }
   function rowTop(row) { return document.getElementById('grid').getBoundingClientRect().top + row.offsetTop; }
   function dragMove(e) {
+    if (drag.mode === 'x') {
+      drag.dx = e.clientX - drag.x0;
+      var ok = drag.dx > 0 ? !S.habit(drag.id).parent : !!S.habit(drag.id).parent;
+      drag.row.style.transform = 'translateX(' + Math.max(-40, Math.min(40, drag.dx)) + 'px)';
+      drag.row.classList.toggle('armed', ok && Math.abs(drag.dx) > SHIFT);
+      return;
+    }
     drag.y = e.clientY;
     var row = drag.row, want = drag.y - drag.grab;
     var prev = row.previousElementSibling, next = row.nextElementSibling;
-    if (prev && prev.classList.contains('hrow') && want < rowTop(prev) + prev.offsetHeight / 2) row.parentNode.insertBefore(row, prev);
-    else if (next && want + row.offsetHeight > rowTop(next) + next.offsetHeight / 2) row.parentNode.insertBefore(next, row);
+    if (prev && prev.classList.contains(drag.sib) && want < rowTop(prev) + prev.offsetHeight / 2) row.parentNode.insertBefore(row, prev);
+    else if (next && next.classList.contains(drag.sib) && want + row.offsetHeight > rowTop(next) + next.offsetHeight / 2) row.parentNode.insertBefore(next, row);
     row.style.transform = 'translateY(' + (want - rowTop(row)) + 'px)';
   }
   function autoScroll() {   // near the top/bottom edge, keep scrolling while dragging
-    if (!drag) return;
+    if (!drag || drag.mode !== 'y') return;
     var r = drag.sc.getBoundingClientRect(), edge = 56, v = 0;
     if (drag.y < r.top + edge) v = -Math.ceil((r.top + edge - drag.y) / 6);
     else if (drag.y > r.bottom - edge) v = Math.ceil((drag.y - r.bottom + edge) / 6);
@@ -236,7 +332,9 @@
     drag.auto = requestAnimationFrame(autoScroll);
   }
   function dragEnd(cancel) {
-    var d = drag; drag = null; cancelAnimationFrame(d.auto); quietClick = true;
+    var d = drag; quietClick = true;
+    if (d.mode === 'x') { d.row.style.transform = ''; d.row.classList.remove('shift', 'armed'); if (!cancel) shiftEnd(); drag = null; return App.render(); }
+    drag = null; cancelAnimationFrame(d.auto);
     d.row.classList.remove('drag'); d.row.style.transform = '';
     if (cancel) return App.render();
     var ids = [].map.call(document.querySelectorAll('#grid .hrow'), function (r) { return r.dataset.row; });
@@ -259,6 +357,14 @@
   function drawEdit() {
     var h = draft, f = h.freq, ws = S.d.settings.weekStart || 0;
     var wdOrder = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return (i + ws) % 7; });
+    var grp = !h._new && isGroup(S.habit(h.id)), nSub = grp ? liveSubs(h.id).length : 0, inG = h.parent && S.habit(h.parent);
+    var a = h.agg || { t: 'count', n: 1 };
+    var groupFields =
+      '<div class="fl">Group result' + seg('agg', a.t, [['count', 'Tick when done'], ['sum', 'Sum of values']]) +
+      '<span class="small muted">' + (a.t === 'count' ? 'The group gets a tick when enough of its sub-habits are done that day.' : 'The group shows the total of its sub-habits (a tick counts as 1).') + '</span></div>' +
+      (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + Math.min(a.n || nSub, nSub) + '"> of ' + nSub + ' sub-habits are done</label>'
+        : '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min" autocomplete="off"></label>' +
+          '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>');
     var html =
       '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (h._new ? 'New habit' : 'Edit habit') + '</h2>' +
       '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
@@ -267,11 +373,13 @@
       '<div class="fl">Colour<div class="sw">' + COLORS.map(function (c) {
         return '<button class="dot' + (c === h.color ? ' on' : '') + '" style="background:' + c + '" data-act="ef" data-f="color" data-v="' + c + '" aria-label="Colour ' + c + '"></button>';
       }).join('') + '</div></div>' +
+      (inG ? '<p class="small muted">Sub-habit of <b style="color:' + esc(inG.color) + '">' + esc(inG.name) + '</b>. To take it out: hold its name and slide left.</p>' : '') +
+      (grp ? groupFields :
       '<div class="fl">Type' + seg('type', h.type, [['yn', 'Yes / No'], ['num', 'Measurable']], !h._new) +
       (!h._new ? '<span class="small muted">Switching type comes in a later version.</span>' : '') + '</div>' +
       '<div class="fl">Habit is' + seg('kind', h.kind, [['good', 'Good — build it'], ['bad', 'Bad — quit it']]) +
-      '<span class="small muted">' + (h.kind === 'bad' ? 'A tick means you did it (shown red). Empty days are clean days.' : 'A tick means you did it.') + '</span></div>' +
-      (h.type === 'num' ?
+      '<span class="small muted">' + (h.kind === 'bad' ? 'A tick means you did it (shown red). Empty days are clean days.' : 'A tick means you did it.') + '</span></div>') +
+      (!grp && h.type === 'num' ?
         '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min, km" autocomplete="off"></label>' +
         '<label class="fl">Target<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>' +
         '<div class="fl">Target type' + seg('tt', h.tt, [['min', 'At least'], ['max', 'At most']]) + '</div>' : '') +
@@ -290,11 +398,14 @@
     if (g('fUnit') != null) draft.unit = g('fUnit').trim();
     if (g('fTarget') != null) { var t = parseFloat(g('fTarget').replace(',', '.')); draft.target = isFinite(t) ? t : draft.target; }
     if (g('fN') != null) { var n = parseInt(g('fN'), 10); draft.freq.n = n > 0 ? n : 1; }
+    if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
   }
 
   /* ---- Settings & menu ---- */
   function openMenu() {
-    showSheet('menu', '<button class="mi" data-act="settings">Settings</button>', 'menu');
+    var g = S.habits().some(isGroup);
+    showSheet('menu', (g ? '<button class="mi" data-act="foldAll" data-f="1">Collapse all groups</button><button class="mi" data-act="foldAll" data-f="0">Expand all groups</button>' : '') +
+      '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {
     var s = S.d.settings;
@@ -310,7 +421,20 @@
   /* ---- Actions ---- */
   var actions = {
     add: function () { openEdit(null); },
-    edit: function (el) { if (sel) selToggle(el.dataset.id); else openEdit(el.dataset.id); },
+    edit: function (el) {
+      var id = el.dataset.id, h = S.habit(id);
+      if (sel) return selToggle(id);
+      if (h && isGroup(h)) { setFold([id], !folded(id)); return; }   // tap a group = fold / unfold
+      openEdit(id);
+    },
+    selFold: function () {
+      var gs = Object.keys(sel).filter(function (id) { var h = S.habit(id); return h && isGroup(h); });
+      setFold(gs, !gs.every(folded)); selEnd();
+    },
+    foldAll: function (el) {
+      var gs = S.habits().filter(isGroup).map(function (h) { return h.id; }), f = el.dataset.f === '1';
+      closeSheet(function () { setFold(gs, f); });
+    },
     selDone: function () { selEnd(); },
     selEdit: function () { var id = Object.keys(sel)[0]; selEnd(function () { openEdit(id); }); },
     selColor: function () {
@@ -347,6 +471,7 @@
       else if (f === 'type') { h.type = v; if (v === 'num' && h.target === 1 && !h.unit) h.target = 1; }
       else if (f === 'kind') { h.kind = v; if (!h._ttSet) h.tt = v === 'bad' ? 'max' : 'min'; }
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
+      else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') { h.freq.t = v; if (v === 'days' && !h.freq.days.length) h.freq.days = [0, 1, 2, 3, 4, 5, 6]; }
       else if (f === 'wd') { var i = +v, a = h.freq.days, p = a.indexOf(i); if (p >= 0) a.splice(p, 1); else a.push(i); a.sort(); }
       drawEdit();
@@ -357,6 +482,7 @@
       h.name = (h.name || '').trim();
       if (!h.name) { App.toast('Give the habit a name'); var n = document.getElementById('fName'); if (n) n.focus(); return; }
       if (h.type === 'num' && !(h.target >= 0)) return App.toast('Enter a target number');
+      if (h.agg && h.agg.t === 'count' && S.habit(h.id) && isGroup(S.habit(h.id))) h.agg.n = Math.min(h.agg.n || 1, liveSubs(h.id).length);
       if (h.freq.t === 'days' && !h.freq.days.length) return App.toast('Pick at least one weekday');
       delete h._new; delete h._ttSet;
       closeSheet(function () { S.putHabit(h); App.render(); });
@@ -364,7 +490,8 @@
     delHabit: function () {
       var id = draft.id, name = draft.name;
       closeSheet(function () {
-        confirmBox('Delete “' + name + '” and all its history?', 'Delete', function () { S.delHabit(id); App.render(); App.toast('Deleted'); });
+        var g = S.habit(id) && isGroup(S.habit(id));
+        confirmBox('Delete “' + name + '” and all its history?' + (g ? ' Its sub-habits stay, as normal habits.' : ''), 'Delete', function () { S.delHabit(id); App.render(); App.toast('Deleted'); });
       });
     },
     numStep: function (el) {
