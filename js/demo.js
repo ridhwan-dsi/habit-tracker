@@ -1,4 +1,4 @@
-/* Demo data (SL 29). Builds a filled example — tabs, a group, good/bad, yes/no and measurable habits, 31 days of
+/* Demo data (SL 29). Builds a filled example — tabs, a group, good/bad, yes/no and measurable habits, 200 days of
    history — so the app can be shown without his own data, and a first-time visitor sees what it does.
    Demo lives under its own localStorage key (Store.setDemo), never syncs, and is rebuilt fresh each time it is turned on. */
 (function () {
@@ -34,7 +34,7 @@
         [habit({ name: 'Plan the week', color: '#7FB3FF', freq: { t: 'days', n: 1, days: [6] }, tab: W }), 0.85]);
 
       var t = Store.todayDate();
-      for (var i = 0; i < 31; i++) {
+      for (var i = 0; i < 200; i++) {
         var dt = new Date(t); dt.setDate(t.getDate() - i);
         var k = Store.key(dt), wd = dt.getDay();
         list.forEach(function (x) {

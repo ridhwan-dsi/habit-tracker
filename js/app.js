@@ -34,6 +34,7 @@
     starOn: '<svg class="i" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
     list: '<svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
     tabs: '<svg class="i" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h6l2 2"/></svg>',
+    chart: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var VIEW_NAME = { all: 'Habits', star: 'Starred', arch: 'Archived', win: 'Outside time window' };
@@ -467,6 +468,35 @@
     S.reorder(ids); App.render();
   }
 
+  /* ---- v7 Stats page: tap a habit's name (groups: chart button in Edit). Pen opens Edit; Edit's back/Save return here. ---- */
+  var stId = null, stMon = 0;
+  function startOf(h) {   // creation time from the id, or the first entry, whichever is earlier
+    var ids = [h.id].concat(isGroup(h) ? subs(h.id).map(function (x) { return x.id; }) : []), t = S.todayDate(), best = t;
+    ids.forEach(function (id) {
+      var ms = parseInt(String(id).slice(0, -4), 36); if (ms > 1.6e12 && ms < Date.now() + 864e5) { var c = new Date(ms); c.setHours(12, 0, 0, 0); if (c < best) best = c; }
+      Object.keys(S.d.entries).forEach(function (k) { if (k.indexOf(id + '|') === 0) { var p = k.slice(id.length + 1).split('-'), d = new Date(+p[0], +p[1] - 1, +p[2], 12); if (d < best) best = d; } });
+    });
+    return best;
+  }
+  function openStats(id, keepMonth) {
+    var h = S.habit(id); if (!h) return;
+    if (stId !== id || !keepMonth) stMon = 0; stId = id;
+    var grp = isGroup(h), bad = !grp && h.kind === 'bad', numT = grp ? h.agg && h.agg.t === 'sum' : h.type === 'num';
+    var res = grp ? function (k) { var r = groupRes(h, k); return { v: h.agg && h.agg.t === 'sum' ? r.sum : r.done, ok: r.ok, s: r.total === 0 && liveSubs(h.id).length > 0 }; }
+      : function (k) { var v = S.val(h.id, k), sk = S.skipped(h.id, k), did = v != null && (h.type === 'yn' ? !!v : (bad ? !met(h, v) : met(h, v)));
+          return { v: v, s: sk, ok: bad ? !did : did }; };
+    var f = h.freq || {}, fq = f.t === 'week' ? f.n + '× a week' : f.t === 'month' ? f.n + '× a month' : f.t === 'days' && f.days.length ? f.days.map(function (d) { return WD[d]; }).join(', ') : 'Every day';
+    var sub = grp ? (h.agg && h.agg.t === 'sum' ? 'Group · sum' + (h.target ? ', target ' + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') : '') : 'Group · done when ' + Math.min(h.agg.n || 1, liveSubs(h.id).length) + ' of ' + liveSubs(h.id).length + ' are done')
+      : (bad ? 'Bad habit · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + fq;
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>' + esc(h.name) + '</h2>' +
+      '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
+      '<div class="stats"><p class="stsub">' + sub + '</p>' +
+      Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon }) + '</div>';
+    if (sheetOpen === 'stats' || sheetOpen === 'edit') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
+    else showSheet('stats', html, 'page');
+  }
+
   /* ---- Create / edit habit (full-screen page) ---- */
   var draft = null;
   function openEdit(id) {
@@ -475,6 +505,7 @@
     draft._new = !h; draft._ttSet = !!h;
     if (!h) { var v = view(); if (S.tab(v)) draft.tab = v; if (v === 'star') draft.star = true; }
     if (!draft.win) draft.win = { from: '', to: '' };
+    draft._from = sheetOpen === 'stats' ? 'stats' : null;
     drawEdit();
   }
   function seg(name, cur, opts, locked) {
@@ -499,7 +530,7 @@
           '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>');
     var html =
       '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (h._new ? 'New habit' : 'Edit habit') + '</h2>' +
-      '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
+      (!h._new && !h._from ? '<button class="ib" data-act="statOpen" aria-label="Stats">' + ICON.chart + '</button>' : '') + '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
       '<div class="form">' +
       '<label class="fl">Name<input id="fName" value="' + esc(h.name) + '" placeholder="e.g. Qur’an pages" enterkeyhint="done" autocomplete="off"></label>' +
       '<div class="fl">Colour<div class="sw">' + COLORS.map(function (c) {
@@ -666,7 +697,7 @@
       if (ctxGrp(h)) return;
       if (sel) return selToggle(id);
       if (h && isGroup(h)) { setFold([id], !folded(id)); return; }   // tap a group = fold / unfold
-      openEdit(id);
+      openStats(id);
     },
     selFold: function () {
       if (sheetOpen) return closeSheet(actions.selFold);
@@ -822,8 +853,10 @@
       var o = !h._new && S.habit(h.id), sw = o && o.type !== h.type && S.countEntries(h.id);
       if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
       var tick = h._tick;
-      delete h._new; delete h._ttSet; delete h._tick;
-      closeSheet(function () { if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render(); if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted'); });
+      var back = h._from === 'stats';
+      delete h._new; delete h._ttSet; delete h._tick; delete h._from;
+      var done = function () { if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render(); if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted'); };
+      if (back) { done(); openStats(h.id, true); } else closeSheet(done);
     },
     delHabit: function () {
       var id = draft.id, name = draft.name;
@@ -843,7 +876,10 @@
     settings: function () { closeSheet(openSettings); },
     demoOn: function () { setDemo(true); },
     demoOff: function () { setDemo(false); },
-    close: function () { closeSheet(); },
+    close: function () { if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    statEdit: function () { openEdit(stId); },
+    statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
+    stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },
     confirmOk: function () { App._confirm(); },
     setTg: function (el) { if (el.dataset.k === 'demo') { setDemo(!S.demo); var y0 = sheet.scrollTop; openSettings(); sheet.scrollTop = y0; return; } var k = el.dataset.k, s = S.d.settings; s[k] = s[k] === false; S.saveSettings(); App.render(); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
     setNum: function (el) { S.d.settings[el.dataset.k] = +el.dataset.v; S.saveSettings(); App.render(true); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
