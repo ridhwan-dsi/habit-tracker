@@ -221,6 +221,7 @@
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
           : all.length ? '<div class="empty"><p>' + (f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p><button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button></div>') + ribbon;
+      root.classList.toggle('sublines', f.subLines !== false);
       sizeCols();
       sc = document.getElementById('sc');
       if (sc && keep) { sc.scrollLeft = keep.l; sc.scrollTop = keep.t; }
@@ -543,6 +544,7 @@
         ribbon: 'Tabs open from the Tabs button on the bottom bar.',
         top: 'Your tabs sit in a row across the top; Filter and Add move to the bottom bar.',
         off: 'No tabs: one page with each tab’s name as a header above its habits.' }[tabsMode()] + '</p>' +
+      '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
       '<p class="small muted">Google sign-in and sync to your Drive arrive in a later version. Everything is saved on this device.</p>' +
@@ -755,6 +757,7 @@
     settings: function () { closeSheet(openSettings); },
     close: function () { closeSheet(); },
     confirmOk: function () { App._confirm(); },
+    setTg: function (el) { var k = el.dataset.k, s = S.d.settings; s[k] = s[k] === false; S.saveSettings(); App.render(); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
     tabsMode: function (el) { S.d.settings.tabsMode = el.dataset.v; S.saveSettings(); App.render(true); openSettings(); },
     theme: function (el) { S.d.settings.theme = el.dataset.t; document.documentElement.dataset.theme = el.dataset.t; S.saveSettings(); openSettings(); },
     share: function () { var u = location.origin + location.pathname; (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function () { App.toast('Link copied'); }, function () { App.toast(u); }); },

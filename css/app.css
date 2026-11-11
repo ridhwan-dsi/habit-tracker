@@ -162,3 +162,6 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 #toast { bottom:calc(76px + env(safe-area-inset-bottom)); }
 .mi.flat { padding:10px 0; color:var(--ink); font-size:14px; }
 .rbtn.ionly { flex:0 0 52px; color:var(--ink); }
+:root, [data-theme=dark] { --subln:rgba(255,255,255,.08); } [data-theme=light] { --subln:rgba(0,0,0,.08); }
+.sublines .hrow.sub + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub .c { box-shadow:inset 0 1px 0 var(--subln); }
+.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:inset 0 1px 0 var(--subln), 6px 0 6px -6px rgba(0,0,0,.35); }

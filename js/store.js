@@ -19,7 +19,7 @@
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
-      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon' },
+      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon', subLines: true },
       habits: {}, entries: {}, tabs: {}, ui: {}
     };
   }
