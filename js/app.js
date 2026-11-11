@@ -252,9 +252,12 @@
           : all.length ? '<div class="empty"><p>' + (f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p><button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       root.classList.toggle('sublines', f.subLines !== false);
+      root.classList.toggle('noscr', f.hScroll === false);
+      root.classList.toggle('nofrz', f.freezeToday === false);
       sizeCols();
       sc = document.getElementById('sc');
-      if (sc && keep) { sc.scrollLeft = keep.l; sc.scrollTop = keep.t; }
+      if (sc && keep) { sc.scrollLeft = f.hScroll === false ? 0 : keep.l; sc.scrollTop = keep.t; }
+      if (sc) { var edge = function () { sc.classList.toggle('hs', sc.scrollLeft > 2); }; sc.addEventListener('scroll', edge, { passive: true }); edge(); }
       var on = document.querySelector('.tchip.on'); if (on && resetScroll) on.scrollIntoView({ inline: 'center', block: 'nearest' });
       lastWin = winSig();
     },
@@ -731,6 +734,7 @@
     var s = S.d.settings, tg = function (k, label, hint) {
       var on = k === 'demo' ? S.demo : !!s[k]; return '<button class="mi tg flat" data-act="setTg" data-k="' + k + '"><span>' + label + (hint ? '<br><span class="small muted">' + hint + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>';
     };
+    var dtg = function (k, label, hint) { var on = s[k] !== false; return '<button class="mi tg flat" data-act="setTg" data-k="' + k + '"><span>' + label + '<br><span class="small muted">' + hint + '</span></span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>'; };
     showSheet('settings',
       '<h3>Settings</h3>' +
       '<h4>Theme</h4><div class="row">' + [['dark', 'Dark'], ['light', 'Light']].map(function (t) { return '<button class="btn sm' + (s.theme === t[0] ? ' pri' : '') + '" data-act="theme" data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
@@ -748,6 +752,8 @@
       '<div class="fl" style="margin-top:12px">First day of week<div class="seg">' + [[6, 'Saturday'], [0, 'Sunday'], [1, 'Monday']].map(function (w) {
         return '<button class="' + ((s.weekStart || 0) === w[0] ? 'on' : '') + '" data-act="setNum" data-k="weekStart" data-v="' + w[0] + '">' + w[1] + '</button>';
       }).join('') + '</div></div>' +
+      '<h4>Main list</h4>' + dtg('hScroll', 'Scroll back through past days', 'Off: only the days that fit on screen, no side-scrolling.') +
+      (s.hScroll !== false ? dtg('freezeToday', 'Keep today’s column fixed', 'Off: today scrolls away with the other days.') : '') +
       '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
       '<button class="mi tg flat" data-act="setTg" data-k="starGroups"><span>In Starred, show the group above a starred sub-habit</span><span class="box' + (s.starGroups !== false ? ' on' : '') + '">' + (s.starGroups !== false ? ICON.check : '') + '</span></button>' +
       '<h4>Prayer times</h4><div class="frow"><label>' + (s.pt && s.pt.lat != null ? esc(s.pt.name || 'My location') + '<br><span class="small muted">' + esc((Prayer.METHODS[s.pt.method] || {}).name || '') + ' · Asr ' + (s.pt.asr === 'hanafi' ? 'Hanafi' : 'Hanbali/Shafi’i') + '</span>'

@@ -25,7 +25,7 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .hrow { min-height:52px; }
 .grp { margin-bottom:6px; }
 .hrow .nm { cursor:pointer; }
-.nmi { flex:1; min-width:0; background:var(--card); border-radius:0; display:flex; align-items:center; padding:6px 8px 6px 14px; box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.nmi { flex:1; min-width:0; background:var(--card); border-radius:0; display:flex; align-items:center; padding:6px 8px 6px 14px; box-shadow:var(--edge); }
 .hrow .nm span { font-size:15px; font-weight:500; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word; }
 .c { width:48px; flex:none; background:var(--card); display:flex; flex-direction:column; align-items:center; justify-content:center; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; cursor:pointer; transition:background .15s; }
 .hrow.rt .nmi { border-top-left-radius:12px; } .hrow.rt .c:last-child { border-top-right-radius:12px; }
@@ -96,7 +96,7 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 /* ---- v2: select mode, drag, filter ---- */
 .hrow .nm { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
 .nm.press .nmi, .hrow.held .nmi { background:var(--line); }
-.hrow.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), 6px 0 6px -6px rgba(0,0,0,.35); }
+.hrow.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), var(--edge); }
 .hrow.sel .c { background:var(--card2); }
 .hrow.arch .nmi span { opacity:.55; }
 .hrow.arch .nmi::after { content:'Archived'; font-size:10px; color:var(--muted); margin-left:auto; padding-left:6px; flex:none; }
@@ -164,14 +164,14 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .rbtn.ionly { flex:0 0 52px; color:var(--ink); }
 :root, [data-theme=dark] { --subln:rgba(255,255,255,.08); } [data-theme=light] { --subln:rgba(0,0,0,.08); }
 .sublines .hrow.sub + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub .c { box-shadow:inset 0 1px 0 var(--subln); }
-.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:inset 0 1px 0 var(--subln), 6px 0 6px -6px rgba(0,0,0,.35); }
+.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:inset 0 1px 0 var(--subln), var(--edge); }
 /* SL 33: today's column stays put beside the names while older days scroll under it */
 .dh.tdy, .c.tdy { position:sticky; left:calc(var(--nw,180px) + 12px); z-index:1; }
 .dh.tdy { background:var(--head); }
-.c.tdy { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.c.tdy { box-shadow:var(--edge); }
 .c.tdy.off { opacity:1; background:color-mix(in srgb, var(--card2) 55%, var(--bg)); } .c.tdy.off > * { opacity:.55; }
 .hrow.sub .c.tdy.off { background:var(--sub); }
-.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:inset 0 1px 0 var(--subln), 6px 0 6px -6px rgba(0,0,0,.35); }
+.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:inset 0 1px 0 var(--subln), var(--edge); }
 .sc { scroll-padding-left:calc(var(--nw,180px) + 60px); }
 /* Landscape phone: full width; names keep their portrait width, extra width shows more days */
 @media (orientation:landscape) and (max-height:600px) { #app { max-width:none; } .rbtn { min-height:40px; } .rbtn span { display:none; } .top { padding-top:4px; } }
@@ -185,11 +185,11 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
    sub-habit divider stops short of the card's left edge */
 i.chev { display:block; }
 .sublines .hrow.sub + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub .c:not(.tdy) { box-shadow:none; }
-.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
-.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.sublines .hrow.sub + .hrow.sub .nmi { box-shadow:var(--edge); }
+.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:var(--edge); }
 .sublines .hrow.sub + .hrow.sub .nm::before { content:''; position:absolute; left:26px; right:0; top:0; height:1px; background:var(--subln); z-index:1; }
 .sublines .hrow.sub + .hrow.sub .c { background-image:linear-gradient(var(--subln), var(--subln)); background-size:100% 1px; background-repeat:no-repeat; }
-.hrow.sel .nmi, .hrow.sub.sel .nmi, .sublines .hrow.sub.sel + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), 6px 0 6px -6px rgba(0,0,0,.35); }
+.hrow.sel .nmi, .hrow.sub.sel .nmi, .sublines .hrow.sub.sel + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), var(--edge); }
 .hrow.sel .c, .hrow.sub.sel .c, .hrow.sub.sel .c.tdy.off { background-color:var(--card2); }
 .hrow.ctx .nm { cursor:default; } .hrow.ctx .nmi span { font-style:italic; font-weight:500 !important; opacity:.75; }
 
@@ -281,3 +281,7 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
   .chart { max-height:210px; margin:0 auto; }
   .cal { max-width:420px; margin:0 auto; } .calh { max-width:440px; margin-left:auto; margin-right:auto; }
 }
+/* v5.3: the edge shadow beside the frozen columns shows only while scrolled sideways; Settings can unfreeze today or stop side-scrolling */
+.sc { --edge:0 0 0 0 transparent; } .sc.hs { --edge:6px 0 6px -6px rgba(0,0,0,.35); }
+.nofrz .dh.tdy, .nofrz .c.tdy { position:static; }
+.noscr .sc { overflow-x:hidden; scroll-snap-type:none; }
