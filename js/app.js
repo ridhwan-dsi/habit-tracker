@@ -24,6 +24,11 @@
     bin: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
     check: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
     fold: '<svg class="i" viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>',
+    // Bottom-bar fold control, one icon per mode: arrows apart = all expanded, arrows together = all collapsed,
+    // one open row + one closed row = each group as set in Edit.
+    fOpen: '<svg class="i" viewBox="0 0 24 24"><path d="M7 8l5-5 5 5M7 16l5 5 5-5M5 12h14"/></svg>',
+    fShut: '<svg class="i" viewBox="0 0 24 24"><path d="M7 3l5 5 5-5M7 21l5-5 5 5M5 12h14"/></svg>',
+    fMan: '<svg class="i" viewBox="0 0 24 24"><path d="M3.5 5.5l3 3 3-3M12.5 7h8M5 13.5l3 3-3 3M12.5 16.5h8"/></svg>',
     star: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
     starOn: '<svg class="i" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
     list: '<svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
@@ -74,7 +79,14 @@
     return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
   }
   function anyCell(h, d) { return isGroup(h) ? groupCell(h, d) : cellHtml(h, d); }
-  function folded(id) { return !!(S.d.ui.fold && S.d.ui.fold[id]); }
+  /* Fold modes (bottom bar): 'open' all expanded, 'shut' all collapsed, 'man' each group's own default (h.fold0, set in Edit).
+     Tapping a group overrides it until the mode changes (ui.fx). In 'shut', opening one group closes the others. */
+  function foldMode() { return S.d.ui.foldMode || 'man'; }
+  function folded(id) {
+    var fx = S.d.ui.fx || {}, m = foldMode(), h = S.habit(id);
+    if (id in fx) return fx[id];
+    return m === 'open' ? false : m === 'shut' ? true : !!(h && h.fold0);
+  }
 
   /* ---- v4 Time window: "Show from" / "Hide after" (clock time). Applies to today's list only.
      A group's window covers its whole card; a sub-habit can also have its own. Returns -1 not yet, 1 expired, 0 inside. ---- */
@@ -196,7 +208,9 @@
         (mode === 'ribbon' ? rb('tabsSheet', ICON.tabs, tabV ? S.tab(v).name : 'Tabs', tabV) : '') +
         (mode === 'top' ? rb('filter', ICON.filter, 'Filter', lit) + rb('add', ICON.plus, 'Add', false) : '') +
         rb('viewArch', ICON.archive, 'Archived', v === 'arch') +
-        rb('viewWin', ICON.clock, 'Later', v === 'win', wc ? '<i class="bdg">' + wc + '</i>' : '') + '</nav>';
+        rb('viewWin', ICON.clock, 'Later', v === 'win', wc ? '<i class="bdg">' + wc + '</i>' : '') +
+        (all.some(isGroup) ? '<button class="rbtn ionly" data-act="foldCycle" aria-label="' + { open: 'All groups expanded', shut: 'All groups collapsed', man: 'Groups as set in Edit' }[foldMode()] + '">' +
+          { open: ICON.fOpen, shut: ICON.fShut, man: ICON.fMan }[foldMode()] + '</button>' : '') + '</nav>';
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
         arch: 'No archived habits.',
@@ -237,8 +251,9 @@
     return h.type === 'yn' ? !!v : met(h, v);   // measurable leaves only once today's target is met
   }
   function setFold(ids, on) {
-    var F = S.d.ui.fold = S.d.ui.fold || {};
-    ids.forEach(function (id) { if (on) F[id] = 1; else delete F[id]; });
+    var F = S.d.ui.fx = S.d.ui.fx || {};
+    if (!on && foldMode() === 'shut' && ids.length === 1) { F = S.d.ui.fx = {}; }   // collapsed mode: only one group open at a time
+    ids.forEach(function (id) { F[id] = on; });
     S.saveUi(); App.render();
   }
 
@@ -389,7 +404,7 @@
       var g = S.habit(above.dataset.grp); if (g.parent) return;
       S.reorder(moveAfter(ids(), h.id, lastOf(above)));
       h.parent = g.id; S.putHabit(h);
-      if (folded(g.id)) { delete S.d.ui.fold[g.id]; S.saveUi(); }
+      if (folded(g.id)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[g.id] = false; S.saveUi(); }
       App.toast('Moved into ' + g.name);
     } else if (dx < -SHIFT && h.parent) {
       var grp = d.row.closest('.grp');
@@ -453,6 +468,8 @@
     var grp = !h._new && isGroup(S.habit(h.id)), nSub = grp ? liveSubs(h.id).length : 0, inG = h.parent && S.habit(h.parent);
     var a = h.agg || { t: 'count', n: 1 };
     var groupFields =
+      '<div class="fl">Shown as' + seg('fold0', h.fold0 ? '1' : '0', [['0', 'Expanded'], ['1', 'Collapsed']]) +
+      '<span class="small muted">Used when the bottom-bar group button is on “as set in Edit”.</span></div>' +
       '<div class="fl">Group result' + seg('agg', a.t, [['count', 'Tick when done'], ['sum', 'Sum of values']]) +
       '<span class="small muted">' + (a.t === 'count' ? 'The group gets a tick when enough of its sub-habits are done that day.' : 'The group shows the total of its sub-habits (a tick counts as 1).') + '</span></div>' +
       (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + (a.n || 1) + '"> sub-habits are done</label>' +
@@ -511,7 +528,7 @@
   /* ---- Settings & menu ---- */
   function openMenu() {
     var g = S.habits().some(isGroup);
-    showSheet('menu', (g ? '<button class="mi" data-act="foldAll" data-f="1">Collapse all groups</button><button class="mi" data-act="foldAll" data-f="0">Expand all groups</button>' : '') +
+    showSheet('menu', 
       (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Hidden tabs</button>' : '') +
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
@@ -607,9 +624,10 @@
       var gs = Object.keys(sel).filter(function (id) { var h = S.habit(id); return h && isGroup(h); });
       setFold(gs, !gs.every(folded)); selEnd();
     },
-    foldAll: function (el) {
-      var gs = S.habits().filter(isGroup).map(function (h) { return h.id; }), f = el.dataset.f === '1';
-      closeSheet(function () { setFold(gs, f); });
+    foldCycle: function () {
+      var next = { open: 'shut', shut: 'man', man: 'open' }[foldMode()];
+      S.d.ui.foldMode = next; S.d.ui.fx = {}; S.saveUi(); App.render();
+      App.toast({ open: 'All groups expanded', shut: 'All groups collapsed', man: 'Each group as set in Edit' }[next]);
     },
     selDone: function () { selEnd(); },
     selStar: function () {
@@ -704,6 +722,7 @@
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') { h.freq.t = v; if (v === 'days' && !h.freq.days.length) h.freq.days = [0, 1, 2, 3, 4, 5, 6]; }
       else if (f === 'tab') h.tab = v || null;
+      else if (f === 'fold0') h.fold0 = v === '1';
       else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
       else if (f === 'winClear') h.win = { from: '', to: '' };
       else if (f === 'wd') { var i = +v, a = h.freq.days, p = a.indexOf(i); if (p >= 0) a.splice(p, 1); else a.push(i); a.sort(); }
