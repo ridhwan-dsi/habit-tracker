@@ -36,6 +36,7 @@
       if (!d && this.demo) { this.d = blank(); d = Demo.build(this.d.settings); }
       this.d = d || blank();
       this.migrate();
+      try { this.dirty = !this.demo && localStorage.getItem('habits.dirty') === '1'; } catch (e) {}   // unsynced changes survive closing the app
     },
     /* SL 29 Demo data: on = a fresh example (with his current settings) under its own key; off = his own data back.
        His own data is never touched while demo is on, and demo never syncs. */
@@ -53,8 +54,9 @@
       d.schema = SCHEMA;
     },
     reset: function (acct) { this.d = blank(); this.d.acct = acct; this.persist(); },
-    persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } },
-    save: function () { this.persist(); if (this.demo) return; this.dirty = true; if (window.Sync) Sync.schedule(); },
+    persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } this.flag(); },
+    flag: function () { if (!this.demo) try { localStorage.setItem('habits.dirty', this.dirty ? '1' : ''); } catch (e) {} },
+    save: function () { if (!this.demo) this.dirty = true; this.persist(); if (this.demo) return; if (window.Sync) Sync.schedule(); },
     saveUi: function () { this.persist(); },
     saveSettings: function () { this.d.su = Date.now(); this.save(); },
     id: function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
@@ -151,13 +153,14 @@
     wSet: function (k, v) { this.d.weights[k] = { v: v == null ? null : Math.round(v * 100) / 100, u: Date.now() }; this.save(); },
 
     merge: function (r) {
-      var L = this.d;
+      var L = this.d, ahead = false;   // ahead = this phone has something Drive doesn't → upload after merging
       ['habits', 'entries', 'tabs', 'weights'].forEach(function (m) {
         var R = r[m] || {}; L[m] = L[m] || {};
         Object.keys(R).forEach(function (k) { var a = R[k], b = L[m][k]; if (!b || (a.u || 0) > (b.u || 0)) L[m][k] = a; });
+        Object.keys(L[m]).forEach(function (k) { var b = L[m][k], a = R[k]; if (!a || (b.u || 0) > (a.u || 0)) ahead = true; });
       });
-      if ((r.su || 0) > (L.su || 0)) { L.settings = r.settings; L.su = r.su; }
-      this.migrate(); this.dirty = true; this.persist();
+      if ((r.su || 0) > (L.su || 0)) { L.settings = r.settings; L.su = r.su; } else if ((L.su || 0) > (r.su || 0)) ahead = true;
+      this.migrate(); this.dirty = this.dirty || ahead; this.persist();
     },
     exportData: function () { var c = JSON.parse(JSON.stringify(this.d)); delete c.ui; return c; }
   };

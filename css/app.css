@@ -253,3 +253,6 @@ i.chev { display:block; }
 .wdlg input { width:100%; font:inherit; font-size:16px; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); outline:none; }
 .wdlg .numrow input { font-size:24px; font-weight:600; text-align:center; } .wdlg input:focus { border-color:var(--pri); }
 .wdlg input[type=date] { color-scheme:dark; } [data-theme=light] .wdlg input[type=date] { color-scheme:light; }
+.ib.sync.ok { color:var(--pri); } .ib.sync.wait { color:#F2C14E; } .ib.sync.err { color:var(--bad); }
+.ib.sync.spin .i { animation:spin 1s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
+a.btn { text-decoration:none; display:inline-flex; align-items:center; }

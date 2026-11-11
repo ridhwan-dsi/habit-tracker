@@ -36,6 +36,8 @@
     tabs: '<svg class="i" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h6l2 2"/></svg>',
     chart: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
     scale: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9.5a5 5 0 018 0M12 9.5l1.6-2"/></svg>',
+    sync: '<svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 01-14.3 4.9M4 12a8 8 0 0114.3-4.9"/><path d="M18.5 3v4.5H14M5.5 21v-4.5H10"/></svg>',
+    cloudOk: '<svg class="i" viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 00.6-8 6 6 0 00-11.6-1.4A4.6 4.6 0 007 18.5z"/><path d="M9.5 13.5l2 2 3.5-3.8"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var VIEW_NAME = { all: 'Habits', star: 'Starred', arch: 'Archived', win: 'Outside time window' };
@@ -204,12 +206,12 @@
       else if (mode === 'top') bar = '<header class="top tstrip">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<div class="chips" id="chips">' + visTabs().map(function (t) {
           return '<button class="tchip' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '">' + esc(t.name) + '</button>';
         }).join('') + '<button class="tchip add" data-act="newTab" aria-label="New tab">' + ICON.plus + (S.tabs().length ? '' : '<span>New tab</span>') + '</button></div>' +
-        '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' +
+        syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' +
         (VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '');
       else bar = '<header class="top">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
         '<button class="ib' + (lit ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
-        '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>';
+        syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>';
       var wc = winCount(), tabV = !VIEW_NAME[v];
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
       var ribbon = '<nav class="rib">' +
@@ -250,7 +252,10 @@
         if (h.parent) { var g = S.habit(h.parent), ge = g && root.querySelector('.c[data-h="' + g.id + '"][data-k="' + d.k + '"]'); if (ge) ge.outerHTML = groupCell(g, d); }
       });
     },
-    syncChanged: function () { if (sheetOpen === 'settings') openSettings(); },
+    syncChanged: function () {
+      var b = document.getElementById('syncBtn'); if (b) b.outerHTML = syncBtn(); else if (S.d.acct && !S.demo && !sel) App.render();   // just signed in: header gains the button
+      if (sheetOpen === 'settings') { var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; }
+    },
     toast: function (m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2600); }
   };
   window.App = App;
@@ -501,6 +506,16 @@
     else showSheet('stats', html, 'page');
   }
 
+  /* ---- v5 sync button in the top bar (only once signed in): green tick-cloud = synced, amber = changes waiting,
+     spinning = syncing, red = error. Tap = sync now. ---- */
+  function syncBtn() {
+    if (!S.d.acct || S.demo || !Sync.enabled()) return '';
+    var st = Sync.state, waiting = S.dirty && st !== 'syncing';
+    var cls = st === 'error' ? 'err' : st === 'syncing' ? 'spin' : waiting || st === 'paused' ? 'wait' : st === 'ok' ? 'ok' : '';
+    var lab = { err: 'Sync error — tap to retry', spin: 'Syncing', wait: 'Changes waiting — tap to sync', ok: 'Synced' }[cls] || 'Tap to sync';
+    return '<button class="ib sync ' + cls + '" id="syncBtn" data-act="syncNow" aria-label="' + lab + '">' + (cls === 'ok' ? ICON.cloudOk : ICON.sync) + '</button>';
+  }
+
   /* ---- SL 34 Weight: its own screen from the bottom bar. One reading a day in kg (2 decimals), BMI from a height
      entered once, change over week / month / year, optional target drawn as a flat line. ---- */
   var wRange = 'week', MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -706,7 +721,13 @@
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
       tg('demo', 'Demo data', S.demo ? 'On: showing an example. Turn off to get your own habits back, exactly as they were.' : 'Show a filled example instead of your habits, e.g. to show someone the app. Your data stays untouched.') +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
-      '<p class="small muted">Google sign-in and sync to your Drive arrive in a later version. Everything is saved on this device.</p>' +
+      '<h4>Account &amp; sync</h4>' + (S.demo ? '<p class="small muted">Exit demo data to sign in.</p>'
+        : !S.d.acct ? '<p class="small muted">Everything is saved on this phone and works offline. Sign in to keep a copy in your Google Drive, use it on other devices, and see your history in a Google Sheet.</p><button class="btn pri" data-act="signIn">Sign in with Google</button>'
+        : '<div class="frow"><label><b>' + esc(S.d.acct) + '</b><br><span class="small muted">' + ({ ok: 'Synced to your Google Drive', syncing: 'Syncing…', paused: 'Changes waiting — they go up on your next tap online', idle: 'Signed in · syncs when you make a change', error: 'Last sync failed' }[Sync.state] || '') + '</span></label><button class="btn sm" data-act="syncNow">Sync now</button></div>' +
+          (S.d.settings.sheetId ? '<div class="frow"><label>History in Google Sheets<br><span class="small muted">Updated every few minutes while syncing</span></label><a class="btn sm" href="https://docs.google.com/spreadsheets/d/' + encodeURIComponent(S.d.settings.sheetId) + '" target="_blank" rel="noopener">Open</a></div>'
+            : Sync.sheetOk === false ? '<div class="frow"><label>History in Google Sheets<br><span class="small muted">Needs one more permission from Google</span></label><button class="btn sm" data-act="signInFull">Allow</button></div>'
+            : '<p class="small muted">Your history Sheet (“Habits history”) is created in your Drive on the next sync.</p>') +
+          '<div class="row"><button class="btn sm" data-act="signOut">Sign out</button></div>') +
       '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
   }
 
@@ -959,6 +980,10 @@
     demoOn: function () { setDemo(true); },
     demoOff: function () { setDemo(false); },
     weight: function () { openWeight(); },
+    syncNow: function () { if (!S.d.acct) return actions.settings(); Sync.now(); },
+    signIn: function () { Sync.signIn(false); },
+    signInFull: function () { Sync.client = null; Sync.signIn(false); },
+    signOut: function () { confirmBox('Sign out? Your habits stay safe in your Google Drive and come back when you sign in again. This phone’s copy is cleared.', 'Sign out', function () { Sync.signOut(); }); },
     wRange: function (el) { wRange = el.dataset.v; openWeight(true); },
     wLog: function (el) { wLog(el.dataset.k || S.today()); },
     wStep: function (el) { var i = document.getElementById('wIn'), v = parseFloat((i.value || '0').replace(',', '.')) || 0; i.value = kg(Math.max(0, v + +el.dataset.d)); },
