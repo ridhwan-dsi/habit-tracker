@@ -192,12 +192,12 @@
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
-      else if (mode === 'top') bar = '<header class="top tstrip"><div class="chips" id="chips">' + visTabs().map(function (t) {
+      else if (mode === 'top') bar = '<header class="top tstrip">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<div class="chips" id="chips">' + visTabs().map(function (t) {
           return '<button class="tchip' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '">' + esc(t.name) + '</button>';
         }).join('') + '<button class="tchip add" data-act="newTab" aria-label="New tab">' + ICON.plus + (S.tabs().length ? '' : '<span>New tab</span>') + '</button></div>' +
         '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' +
         (VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '');
-      else bar = '<header class="top"><h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
+      else bar = '<header class="top">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
         '<button class="ib' + (lit ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
         '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>';
@@ -271,7 +271,9 @@
 
   // Habit-name column takes whatever is left after 4 day columns; older days scroll in from the right.
   function sizeCols() {
-    var w = Math.min(window.innerWidth, 720) - 12;   // 12px right gutter; the left gutter is inside .nm
+    // Landscape phone: keep the portrait name width; the extra width shows more day columns (SL 33)
+    var land = window.innerWidth > window.innerHeight && window.innerHeight <= 600;
+    var w = Math.min(land ? window.innerHeight : window.innerWidth, 720) - 12;   // 12px right gutter; the left gutter is inside .nm
     document.documentElement.style.setProperty('--nw', Math.max(120, w - 4 * CELL) + 'px');
   }
   window.addEventListener('resize', sizeCols);
@@ -660,6 +662,7 @@
         };
       });
     },
+    home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { setView(view() === 'star' ? 'all' : 'star'); },
     viewArch: function () { setView(view() === 'arch' ? 'all' : 'arch'); },
     viewWin: function () { setView(view() === 'win' ? 'all' : 'win'); },

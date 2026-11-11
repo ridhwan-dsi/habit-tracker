@@ -165,3 +165,15 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 :root, [data-theme=dark] { --subln:rgba(255,255,255,.08); } [data-theme=light] { --subln:rgba(0,0,0,.08); }
 .sublines .hrow.sub + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub .c { box-shadow:inset 0 1px 0 var(--subln); }
 .sublines .hrow.sub + .hrow.sub .nmi { box-shadow:inset 0 1px 0 var(--subln), 6px 0 6px -6px rgba(0,0,0,.35); }
+/* SL 33: today's column stays put beside the names while older days scroll under it */
+.dh.tdy, .c.tdy { position:sticky; left:calc(var(--nw,180px) + 12px); z-index:1; }
+.dh.tdy { background:var(--head); }
+.c.tdy { box-shadow:6px 0 6px -6px rgba(0,0,0,.35); }
+.c.tdy.off { opacity:1; background:color-mix(in srgb, var(--card2) 55%, var(--bg)); } .c.tdy.off > * { opacity:.55; }
+.hrow.sub .c.tdy.off { background:var(--sub); }
+.sublines .hrow.sub + .hrow.sub .c.tdy { box-shadow:inset 0 1px 0 var(--subln), 6px 0 6px -6px rgba(0,0,0,.35); }
+.sc { scroll-padding-left:calc(var(--nw,180px) + 60px); }
+/* Landscape phone: full width; names keep their portrait width, extra width shows more days */
+@media (orientation:landscape) and (max-height:600px) { #app { max-width:none; } .rbtn { min-height:40px; } .rbtn span { display:none; } .top { padding-top:4px; } }
+.logo { flex:none; width:36px; height:36px; margin:0 8px 0 -4px; padding:3px; border:0; background:none; border-radius:10px; cursor:pointer; display:grid; place-items:center; }
+.logo img { width:30px; height:30px; display:block; border-radius:8px; } .logo:active { background:var(--line); }
