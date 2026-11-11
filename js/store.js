@@ -1,0 +1,96 @@
+/* Store: one local state object, saved to localStorage on every change, synced later by Sync (v5).
+   Every record carries u (updated ms); merge = newer u wins per record. Deletes keep a tombstone {d:1,u}.
+
+   habits[id] = { id, u, name, color, order,
+     type: 'yn' | 'num',            // yes/no or measurable
+     kind: 'good' | 'bad',          // bad: tick = did it (red), empty = clean
+     unit, target, tt: 'min'|'max', // measurable: target and "At least" / "At most"
+     freq: { t: 'day'|'week'|'month'|'days', n, days:[0..6] },   // days = Sun 0 … Sat 6
+     parent: null,                  // v3 sub-habits: id of the group habit
+     isGroup: false, agg: { t:'sum'|'count', n },                 // v3 group result
+     tab: null, star: false,        // v4
+     win: { from: '', to: '' },     // v4 time window 'HH:MM'
+     archived: false }
+   entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
+   tabs[id] = { id, u, name, order, hidden }   (v4) */
+(function () {
+  var KEY = 'habits.v1', SCHEMA = 1;
+  function blank() {
+    return {
+      schema: SCHEMA, acct: null, su: 0,
+      settings: { theme: 'dark', extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon' },
+      habits: {}, entries: {}, tabs: {}, ui: {}
+    };
+  }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function live(map) { return Object.keys(map).map(function (k) { return map[k]; }).filter(function (x) { return !x.d; }); }
+
+  var S = {
+    d: null, dirty: false,
+    load: function () {
+      try { this.d = JSON.parse(localStorage.getItem(KEY)); } catch (e) { this.d = null; }
+      if (!this.d) this.d = blank();
+      this.migrate();
+    },
+    migrate: function () {
+      var d = this.d, b = blank();
+      Object.keys(b).forEach(function (k) { if (d[k] == null) d[k] = b[k]; });
+      Object.keys(b.settings).forEach(function (k) { if (d.settings[k] == null) d.settings[k] = b.settings[k]; });
+      // future: if (d.schema < 2) { ...reshape, never delete... }
+      d.schema = SCHEMA;
+    },
+    reset: function (acct) { this.d = blank(); this.d.acct = acct; this.persist(); },
+    persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } },
+    save: function () { this.dirty = true; this.persist(); if (window.Sync) Sync.schedule(); },
+    saveUi: function () { this.persist(); },
+    saveSettings: function () { this.d.su = Date.now(); this.save(); },
+    id: function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
+
+    /* ---- days ---- */
+    key: function (dt) { return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()); },
+    // "Today" respects Extend day (hours after midnight still count as yesterday).
+    todayDate: function () { var t = new Date(Date.now() - (this.d.settings.extendH || 0) * 3600000); t.setHours(12, 0, 0, 0); return t; },
+    today: function () { return this.key(this.todayDate()); },
+    days: function (n) {   // newest first
+      var out = [], t = this.todayDate();
+      for (var i = 0; i < n; i++) { var x = new Date(t); x.setDate(t.getDate() - i); out.push({ k: this.key(x), dt: x }); }
+      return out;
+    },
+
+    /* ---- habits ---- */
+    habits: function () { return live(this.d.habits).sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); },
+    habit: function (id) { var h = this.d.habits[id]; return h && !h.d ? h : null; },
+    newHabit: function () {
+      return { name: '', color: '#7FB3FF', type: 'yn', kind: 'good', unit: '', target: 1, tt: 'min',
+        freq: { t: 'day', n: 1, days: [] }, parent: null, isGroup: false, agg: { t: 'sum', n: 1 },
+        tab: null, star: false, win: { from: '', to: '' }, archived: false };
+    },
+    putHabit: function (h) {
+      if (!h.id) { h.id = this.id(); h.order = this.habits().reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1; }
+      h.u = Date.now(); this.d.habits[h.id] = h; this.save(); return h;
+    },
+    delHabit: function (id) {
+      this.d.habits[id] = { id: id, d: 1, u: Date.now() };
+      var E = this.d.entries, now = Date.now();
+      Object.keys(E).forEach(function (k) { if (k.indexOf(id + '|') === 0) E[k] = { v: null, u: now }; });
+      this.save();
+    },
+
+    /* ---- entries ---- */
+    val: function (hid, k) { var e = this.d.entries[hid + '|' + k]; return e && e.v != null ? e.v : null; },
+    setVal: function (hid, k, v) { this.d.entries[hid + '|' + k] = { v: v == null ? null : v, s: 0, u: Date.now() }; this.save(); },
+
+    /* Merge remote into local: per record, newer u wins. Settings: newer su wins. */
+    merge: function (r) {
+      var L = this.d;
+      ['habits', 'entries', 'tabs'].forEach(function (m) {
+        var R = r[m] || {}; L[m] = L[m] || {};
+        Object.keys(R).forEach(function (k) { var a = R[k], b = L[m][k]; if (!b || (a.u || 0) > (b.u || 0)) L[m][k] = a; });
+      });
+      if ((r.su || 0) > (L.su || 0)) { L.settings = r.settings; L.su = r.su; }
+      this.migrate(); this.dirty = true; this.persist();
+    },
+    exportData: function () { var c = JSON.parse(JSON.stringify(this.d)); delete c.ui; return c; }
+  };
+  window.Store = S;
+})();
