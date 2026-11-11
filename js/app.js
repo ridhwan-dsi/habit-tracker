@@ -99,7 +99,24 @@
 
   /* ---- v4 Time window: "Show from" / "Hide after" (clock time). Applies to today's list only.
      A group's window covers its whole card; a sub-habit can also have its own. Returns -1 not yet, 1 expired, 0 inside. ---- */
-  function mins(s) { if (!s) return null; var p = s.split(':'); return +p[0] * 60 + (+p[1] || 0); }
+  /* SL 35: a window edge is a clock time 'HH:MM' or a prayer 'p:<prayer>:<offset min>' (e.g. 'p:asr:-15'),
+     worked out for today at his saved location; with no location set, a prayer edge is treated as no limit. */
+  var ptCache = {};
+  function prayerToday() {
+    var L = S.d.settings.pt; if (!L || L.lat == null) return null;
+    var k = S.today() + JSON.stringify(L); if (!ptCache[k]) { ptCache = {}; ptCache[k] = Prayer.times(S.todayDate(), L); }
+    return ptCache[k];
+  }
+  function mins(s) {
+    if (!s) return null;
+    if (s.indexOf('p:') === 0) { var q = s.split(':'), T = prayerToday(); return T && T[q[1]] != null ? T[q[1]] + (+q[2] || 0) : null; }
+    var p = s.split(':'); return +p[0] * 60 + (+p[1] || 0);
+  }
+  function edgeTxt(s) {
+    if (s.indexOf('p:') !== 0) return s;
+    var q = s.split(':'), o = +q[2] || 0, m = mins(s);
+    return m != null ? Prayer.hm(m) : Prayer.NAMES[q[1]] + (o ? (o > 0 ? '+' : '−') + Math.abs(o) + 'm' : '');   // the list shows today's actual time
+  }
   function winOwn(h) {
     var w = h.win || {}, f = mins(w.from), t = mins(w.to); if (f == null && t == null) return 0;
     var ext = (S.d.settings.extendH || 0) * 60, n = new Date(), m = n.getHours() * 60 + n.getMinutes();
@@ -109,7 +126,7 @@
     return m < f ? -1 : m > t ? 1 : 0;
   }
   function winOf(h) { var g = h.parent && S.habit(h.parent), w = g ? winOwn(g) : 0; return w || winOwn(h); }
-  function winTxt(h) { var w = h.win || {}; return w.from && w.to ? w.from + '–' + w.to : w.from ? 'from ' + w.from : w.to ? 'until ' + w.to : ''; }
+  function winTxt(h) { var w = h.win || {}, f = w.from && edgeTxt(w.from), t = w.to && edgeTxt(w.to); return f && t ? f + '–' + t : f ? 'from ' + f : t ? 'until ' + t : ''; }
 
   /* ---- v4 Views: 'all', 'star', a tab id, 'arch' (archived), 'win' (hidden by time window) ---- */
   function tabsMode() { return S.d.settings.tabsMode || 'ribbon'; }
@@ -605,6 +622,19 @@
     draft._from = sheetOpen === 'stats' ? 'stats' : null;
     drawEdit();
   }
+  function edgeField(id, label, v) {   // SL 35: clock time, or a prayer ± minutes
+    var pr = v && v.indexOf('p:') === 0, q = pr ? v.split(':') : [], T = prayerToday();
+    return '<label class="tl">' + label + '<select id="f' + id + 'K" data-act="edgeKind" class="sel">' + [['', 'Clock time']].concat(Object.keys(Prayer.NAMES).map(function (k) { return [k, Prayer.NAMES[k] + (T && T[k] != null ? ' · ' + Prayer.hm(T[k]) : '')]; })).map(function (o) {
+        return '<option value="' + o[0] + '"' + ((pr ? q[1] : '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+      (pr ? '<span class="offs"><input id="f' + id + 'O" inputmode="numeric" value="' + (+q[2] || 0) + '" autocomplete="off"><em>min (−before / +after)</em></span>'
+        : '<input id="f' + id + '" type="time" value="' + esc(v || '') + '">') + '</label>';
+  }
+  function edgeRead(id) {
+    var k = document.getElementById('f' + id + 'K'); if (!k) return null;
+    if (!k.value) { var t = document.getElementById('f' + id); return t ? t.value || '' : ''; }
+    var o = document.getElementById('f' + id + 'O'), n = o ? parseInt((o.value || '0').replace('−', '-'), 10) : 0;
+    return 'p:' + k.value + ':' + (isFinite(n) ? Math.max(-720, Math.min(720, n)) : 0);
+  }
   function seg(name, cur, opts, locked) {
     return '<div class="seg' + (locked ? ' locked' : '') + '">' + opts.map(function (o) {
       return '<button class="' + (cur === o[0] ? 'on' : '') + '" data-act="ef" data-f="' + name + '" data-v="' + o[0] + '"' + (locked ? ' disabled' : '') + '>' + o[1] + '</button>';
@@ -653,8 +683,8 @@
         [{ id: '', name: 'No tab' }].concat(S.tabs()).map(function (t) {
           return '<button class="tchip' + ((h.tab || '') === t.id ? ' on' : '') + '" data-act="ef" data-f="tab" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</button>';
         }).join('') + '</div></div>' : '') +
-      '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two"><label class="tl">Show from<input id="fFrom" type="time" value="' + esc(h.win.from) + '"></label>' +
-        '<label class="tl">Hide after<input id="fTo" type="time" value="' + esc(h.win.to) + '"></label></div>' +
+      '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two">' + edgeField('From', 'Show from', h.win.from) + edgeField('To', 'Hide after', h.win.to) + '</div>' +
+        (/p:/.test(h.win.from + h.win.to) && !prayerToday() ? '<span class="small" style="color:var(--bad)">Set your location in Settings → Prayer times, or prayer-based edges are ignored.</span>' : '') +
         '<span class="small muted">Outside this time it leaves today’s list; find it under <b>Later</b> on the bottom bar. Leave blank for all day.' +
         (h.win.from || h.win.to ? ' <a href="#" data-act="ef" data-f="winClear">Clear</a>' : '') + '</span></div>' +
       (!h._new ? '<div class="row"><button class="btn danger-o" data-act="delHabit">Delete habit</button></div>' : '') +
@@ -677,7 +707,7 @@
     if (g('fN') != null) { var n = parseInt(g('fN'), 10); draft.freq.n = n > 0 ? n : 1; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
-    if (g('fFrom') != null) draft.win = { from: g('fFrom') || '', to: g('fTo') || '' };
+    if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
     if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
   }
 
@@ -718,6 +748,8 @@
       }).join('') + '</div></div>' +
       '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
       '<button class="mi tg flat" data-act="setTg" data-k="starGroups"><span>In Starred, show the group above a starred sub-habit</span><span class="box' + (s.starGroups !== false ? ' on' : '') + '">' + (s.starGroups !== false ? ICON.check : '') + '</span></button>' +
+      '<h4>Prayer times</h4><div class="frow"><label>' + (s.pt && s.pt.lat != null ? esc(s.pt.name || 'My location') + '<br><span class="small muted">' + esc((Prayer.METHODS[s.pt.method] || {}).name || '') + ' · Asr ' + (s.pt.asr === 'hanafi' ? 'Hanafi' : 'Hanbali/Shafi’i') + '</span>'
+        : 'Not set<br><span class="small muted">Lets a time window start or end at a prayer, e.g. “Asr − 15 min”</span>') + '</label><button class="btn sm" data-act="ptOpen">' + (s.pt ? 'Change' : 'Set') + '</button></div>' +
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
       tg('demo', 'Demo data', S.demo ? 'On: showing an example. Turn off to get your own habits back, exactly as they were.' : 'Show a filled example instead of your habits, e.g. to show someone the app. Your data stays untouched.') +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
@@ -729,6 +761,43 @@
             : '<p class="small muted">Your history Sheet (“Habits history”) is created in your Drive on the next sync.</p>') +
           '<div class="row"><button class="btn sm" data-act="signOut">Sign out</button></div>') +
       '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
+  }
+
+  /* ---- SL 35 Prayer times setup: location typed in (or picked), method, Asr school; preview of today's times ---- */
+  function openPt() {
+    var p = S.d.settings.pt || {}, has = p.lat != null;
+    showSheet('pt', '<h3>Prayer times</h3>' +
+      '<label class="fl">Place<select id="ptCity" data-act="ptCity" class="sel"><option value="">' + (has ? esc(p.name || 'My location') : 'Pick a city, or type coordinates below') + '</option>' +
+        Prayer.CITIES.map(function (c, i) { return '<option value="' + i + '">' + c[0] + '</option>'; }).join('') + '</select></label>' +
+      '<div class="two" style="margin-top:10px"><label class="fl">Latitude<input id="ptLat" inputmode="decimal" value="' + (has ? p.lat : '') + '" placeholder="23.81"></label>' +
+      '<label class="fl">Longitude<input id="ptLng" inputmode="decimal" value="' + (has ? p.lng : '') + '" placeholder="90.41"></label></div>' +
+      '<label class="fl" style="margin-top:10px">Name (optional)<input id="ptName" value="' + esc(p.name || '') + '" placeholder="e.g. Home" autocomplete="off"></label>' +
+      '<label class="fl" style="margin-top:10px">Calculation method<select id="ptMethod" data-act="ptMethod" class="sel">' + Object.keys(Prayer.METHODS).map(function (k) {
+        return '<option value="' + k + '"' + ((p.method || 'karachi') === k ? ' selected' : '') + '>' + Prayer.METHODS[k].name + '</option>'; }).join('') + '</select></label>' +
+      '<div class="fl" style="margin-top:10px">Asr<div class="seg" id="ptAsr">' + [['std', 'Hanbali / Shafi’i'], ['hanafi', 'Hanafi']].map(function (o) {
+        return '<button class="' + ((p.asr || 'std') === o[0] ? 'on' : '') + '" data-act="ptAsr" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div id="ptPrev" class="ptprev"></div>' +
+      '<p class="small muted">Worked out on your phone, in its own time zone — no internet needed. Find coordinates in Google Maps: hold a spot, the numbers appear at the top.</p>' +
+      '<div class="row end">' + (has ? '<button class="btn danger-o" data-act="ptClear">Remove</button><span class="grow"></span>' : '') + '<button class="btn" data-act="ptBack">Cancel</button><button class="btn pri" data-act="ptSave">Save</button></div>');
+    ['ptLat', 'ptLng'].forEach(function (id) { document.getElementById(id).addEventListener('input', ptPreview); });
+    ptPreview();
+  }
+  function ptRead() {
+    var n = function (id) { return parseFloat((document.getElementById(id).value || '').replace(',', '.')); };
+    var on = document.querySelector('#ptAsr .on');
+    return { name: document.getElementById('ptName').value.trim(), lat: n('ptLat'), lng: n('ptLng'), method: document.getElementById('ptMethod').value, asr: on ? on.dataset.v : 'std' };
+  }
+  function ptOk(L) { return isFinite(L.lat) && isFinite(L.lng) && Math.abs(L.lat) <= 66 && Math.abs(L.lng) <= 180; }
+  function ptPreview() {
+    var L = ptRead(), el = document.getElementById('ptPrev'); if (!el) return;
+    if (!ptOk(L)) { el.innerHTML = '<p class="small muted">Today’s times appear here once the place is set.</p>'; return; }
+    var T = Prayer.times(S.todayDate(), L);
+    el.innerHTML = Object.keys(Prayer.NAMES).map(function (k) { return '<div><span>' + Prayer.NAMES[k] + '</span><b>' + Prayer.hm(T[k]) + '</b></div>'; }).join('');
+  }
+  function ptFill(i) {
+    var c = Prayer.CITIES[+i]; if (i === '' || !c) return;
+    document.getElementById('ptLat').value = c[1]; document.getElementById('ptLng').value = c[2]; document.getElementById('ptName').value = c[0];
+    document.getElementById('ptMethod').value = c[3]; ptPreview();
   }
 
   /* ---- v4 Tabs: sheet (ribbon layout), new/rename, hold a tab for its actions ---- */
@@ -980,6 +1049,15 @@
     demoOn: function () { setDemo(true); },
     demoOff: function () { setDemo(false); },
     weight: function () { openWeight(); },
+    ptOpen: function () { openPt(); },
+    ptAsr: function (el) { [].forEach.call(document.querySelectorAll('#ptAsr button'), function (b) { b.classList.toggle('on', b === el); }); ptPreview(); },
+    ptSave: function () {
+      var L = ptRead(); if (!ptOk(L)) return App.toast('Enter latitude and longitude (or pick a city)');
+      L.lat = Math.round(L.lat * 10000) / 10000; L.lng = Math.round(L.lng * 10000) / 10000; if (!L.name) L.name = 'My location';
+      S.d.settings.pt = L; S.saveSettings(); App.render(); openSettings(); App.toast('Prayer times set');
+    },
+    ptClear: function () { S.d.settings.pt = null; S.saveSettings(); App.render(); openSettings(); },
+    ptBack: function () { openSettings(); },
     syncNow: function () { if (!S.d.acct) return actions.settings(); Sync.now(); },
     signIn: function () { Sync.signIn(false); },
     signInFull: function () { Sync.client = null; Sync.signIn(false); },
@@ -1002,7 +1080,7 @@
       S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
       S.saveSettings(); wBack();
     },
-    close: function () { if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
     statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
     stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },
@@ -1029,6 +1107,12 @@
     var fn = actions[el.dataset.act]; if (!fn) return;
     e.preventDefault();
     if (closing) after.push(function () { fn(el); }); else fn(el);
+  });
+  document.addEventListener('change', function (e) {
+    var a = e.target.dataset && e.target.dataset.act;
+    if (a === 'edgeKind') { readInputs(); var y = sheet.scrollTop; drawEdit(); sheet.scrollTop = y; }
+    else if (a === 'ptCity') ptFill(e.target.value);
+    else if (a === 'ptMethod') ptPreview();
   });
   document.addEventListener('keydown', function (e) {   // Enter in the edit form = Save
     if (e.key === 'Enter' && sheetOpen === 'edit' && e.target.tagName === 'INPUT') { e.preventDefault(); actions.saveHabit(); }
