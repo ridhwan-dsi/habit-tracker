@@ -285,3 +285,6 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 .sc { --edge:0 0 0 0 transparent; } .sc.hs { --edge:6px 0 6px -6px rgba(0,0,0,.35); }
 .nofrz .dh.tdy, .nofrz .c.tdy { position:static; }
 .noscr .sc { overflow-x:hidden; scroll-snap-type:none; }
+.srr { grid-template-columns:minmax(70px,34%) 1fr auto; } .srr .mvl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
+.srr b { display:flex; align-items:baseline; gap:6px; justify-content:flex-end; min-width:74px; } .srr b em { font-style:normal; font-weight:500; font-size:11.5px; color:var(--muted); }
+.c.off.ok, .c.off.part { opacity:1; }

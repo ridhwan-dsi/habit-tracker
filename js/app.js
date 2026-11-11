@@ -509,6 +509,35 @@
     });
     return best;
   }
+  /* SL 39: each sub-habit's success this month vs the same days last month (e.g. Fajr 60%, Isha 90%).
+     Rate = done ÷ scheduled, unskipped days since the sub-habit started; today counts only once done.
+     N-a-week / N-a-month sub-habits show times done instead of a rate. Bad sub-habits: clean days. */
+  function subRates(h) {
+    var L = liveSubs(h.id); if (!L.length) return '';
+    var t = S.todayDate(), D = t.getDate(), tk = S.today(), M3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var lm = new Date(t.getFullYear(), t.getMonth() - 1, 1), lLen = new Date(lm.getFullYear(), lm.getMonth() + 1, 0).getDate();
+    var calc = function (x, y, m, upTo) {
+      var st = startOf(x), per = x.freq && (x.freq.t === 'week' || x.freq.t === 'month'), bad = x.kind === 'bad', n = 0, ok = 0;
+      for (var d = 1; d <= upTo; d++) {
+        var dt = new Date(y, m, d, 12), k = S.key(dt); if (dt < st || k > tk) continue;
+        var v = S.val(x.id, k), did = v != null && (x.type === 'yn' ? !!v : (bad ? !met(x, v) : met(x, v))), good = bad ? !did : did;
+        if (S.skipped(x.id, k) || (!per && !scheduled(x, dt))) continue;
+        if (k === tk && !good) continue;
+        n++; if (good) ok++;
+      }
+      return per ? (n ? ok : null) : (n ? Math.round(ok / n * 100) : null);
+    };
+    var rows = L.map(function (x) {
+      var per = x.freq && (x.freq.t === 'week' || x.freq.t === 'month');
+      var a = calc(x, t.getFullYear(), t.getMonth(), D), b = calc(x, lm.getFullYear(), lm.getMonth(), Math.min(D, lLen));
+      var txt = function (v) { return v == null ? '–' : per ? v + '×' : v + '%'; };
+      var w = a == null ? 0 : per ? Math.min(100, a / Math.max(1, (x.freq.n || 1) * (x.freq.t === 'week' ? Math.ceil(D / 7) : 1)) * 100) : a;
+      var cls = a == null || b == null || a === b ? 'same' : (a > b ? 'cur' : 'worse');
+      return '<div class="mvr srr"><span class="mvl">' + esc(x.name) + '</span><div class="mvt"><div class="mvb ' + cls + '" style="width:' + Math.max(2, w) + '%"></div></div><b>' + txt(a) + '<em>' + txt(b) + '</em></b></div>';
+    }).join('');
+    return '<section class="stc"><h4>Each sub-habit · ' + M3[t.getMonth()] + ' 1–' + D + '</h4>' + rows +
+      '<p class="small muted">Small number = same days last month (' + M3[lm.getMonth()] + ' 1–' + Math.min(D, lLen) + '). Green = better than last month, red = worse.</p></section>';
+  }
   function openStats(id, keepMonth) {
     var h = S.habit(id); if (!h) return;
     if (stId !== id || !keepMonth) stMon = 0; stId = id;
@@ -523,7 +552,7 @@
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon }) + '</div>';
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: grp ? subRates(h) : '' }) + '</div>';
     if (sheetOpen === 'stats' || sheetOpen === 'edit') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }

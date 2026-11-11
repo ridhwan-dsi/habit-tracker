@@ -22,6 +22,7 @@
       var d = { k: k, dt: dt, m: k.slice(0, 7), sch: o.sched(dt), s: !!r.s, ok: !!r.ok, v: r.v, isT: k === tk };
       d.cnt = d.sch && !d.s && !(d.isT && !d.ok);
       d.done = o.bad ? (d.cnt && !d.ok) : (d.cnt && d.ok);   // good: done; bad: lapse
+      d.bonus = !o.bad && !d.sch && !d.s && d.ok;              // SL 40: ticked on a non-scheduled day = extra, never a miss
       days.push(d); byK[k] = d;
     }
     var f = o.h.freq || { t: 'day' }, per = f.t === 'week' || f.t === 'month', N = Math.max(1, f.n || 1);
@@ -66,7 +67,8 @@
     var tiles = [];
     tiles.push([o.bad ? 'Clean streak' : 'Current streak', plural(cur, su), cur && cur >= best ? 'Your best yet' : '']);
     tiles.push([o.bad ? 'Best clean streak' : 'Best streak', plural(best, su), '']);
-    tiles.push(['This month', unitTxt(mtd == null ? 0 : mtd), MON[tm] + ' 1–' + D]);
+    var bonusM = monthDays(ty, tm).filter(function (d) { return d.bonus; }).length;
+    tiles.push(['This month', unitTxt(mtd == null ? 0 : mtd), MON[tm] + ' 1–' + D + (bonusM ? ' · +' + bonusM + ' extra day' + (bonusM > 1 ? 's' : '') : '')]);
     if (o.num) {
       var logged = monthDays(ty, tm).filter(function (d) { return !d.s && typeof d.v === 'number'; });
       var avg = logged.length ? r1(logged.reduce(function (s, d) { return s + d.v; }, 0) / logged.length) : 0;
@@ -75,7 +77,7 @@
       var cm = monthDays(ty, tm).filter(function (d) { return d.cnt; }), cl = cm.filter(function (d) { return d.ok; }).length;
       tiles.push(['Clean days this month', cm.length ? Math.round(cl / cm.length * 100) + '%' : '–', cl + ' of ' + cm.length]);
     } else {
-      var all = days.filter(function (d) { return d.done; }).length;
+      var all = days.filter(function (d) { return d.done || d.bonus; }).length;
       tiles.push(['Done in total', plural(all, 'time'), 'since ' + o.start.getDate() + ' ' + MON[o.start.getMonth()]]);
     }
 
@@ -114,7 +116,7 @@
       var dd = byK[cy + '-' + pad(cmn + 1) + '-' + pad(dn)], cls = 'cd', st = '';
       if (!dd) cls += ' fut';
       else if (dd.s) cls += ' skp';
-      else if (!dd.sch) cls += ' off';
+      else if (!dd.sch && !dd.bonus) cls += ' off';
       else if (o.bad) { if (!dd.ok) cls += ' lap'; else if (dd.cnt) cls += ' cln'; }
       else if (dd.ok) { cls += ' ok'; st = 'background:' + o.color; }
       else if (per) cls += ' off';   // N-times-a-week/month: a day without it isn't a miss
@@ -179,7 +181,7 @@
       }
     }
 
-    return '<div class="tiles">' + tiles.map(function (t) { return '<div class="tile"><span>' + t[0] + '</span><b>' + esc(t[1]) + '</b>' + (t[2] ? '<em>' + esc(t[2]) + '</em>' : '') + '</div>'; }).join('') + '</div>' +
+    return '<div class="tiles">' + tiles.map(function (t) { return '<div class="tile"><span>' + t[0] + '</span><b>' + esc(t[1]) + '</b>' + (t[2] ? '<em>' + esc(t[2]) + '</em>' : '') + '</div>'; }).join('') + '</div>' + (o.extra || '') +
       mom + wkB + cal + l30 + six + wk;
   }
   window.Stats = { build: build, key: key };
