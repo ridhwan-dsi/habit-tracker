@@ -177,3 +177,7 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 @media (orientation:landscape) and (max-height:600px) { #app { max-width:none; } .rbtn { min-height:40px; } .rbtn span { display:none; } .top { padding-top:4px; } }
 .logo { flex:none; width:36px; height:36px; margin:0 8px 0 -4px; padding:3px; border:0; background:none; border-radius:10px; cursor:pointer; display:grid; place-items:center; }
 .logo img { width:30px; height:30px; display:block; border-radius:8px; } .logo:active { background:var(--line); }
+/* v6 skip day */
+.c .sk { width:18px; height:18px; fill:none; stroke:var(--muted); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.c.skp { background-image:repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.08) 6px 8px); }
+.seg button[data-act=setNum] { font-size:12.5px; }

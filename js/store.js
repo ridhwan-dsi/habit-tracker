@@ -19,7 +19,7 @@
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
-      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon', subLines: true },
+      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon', subLines: true, hideSkipped: false },
       habits: {}, entries: {}, tabs: {}, ui: {}
     };
   }
@@ -112,6 +112,26 @@
     /* ---- entries ---- */
     val: function (hid, k) { var e = this.d.entries[hid + '|' + k]; return e && e.v != null ? e.v : null; },
     setVal: function (hid, k, v) { this.d.entries[hid + '|' + k] = { v: v == null ? null : v, s: 0, u: Date.now() }; this.save(); },
+    // v6 skip day: neither done nor missed (Settings → Skip days)
+    skipped: function (hid, k) { var e = this.d.entries[hid + '|' + k]; return !!(e && e.s === 1); },
+    setSkip: function (hid, k) { this.d.entries[hid + '|' + k] = { v: null, s: 1, u: Date.now() }; this.save(); },
+    /* v6 type switch. Measurable → yes/no: good = target met becomes a tick, bad = any amount becomes a tick;
+       the number is kept (n) so switching back restores it. Yes/no → measurable: a tick becomes its kept number, else tickTo. */
+    switchType: function (h, to, tickTo) {
+      var E = this.d.entries, pre = h.id + '|', now = Date.now(), n = 0;
+      Object.keys(E).forEach(function (k) {
+        if (k.indexOf(pre) !== 0) return; var e = E[k];
+        if (to === 'yn') {
+          if (e.v == null) return;
+          var ok = h.kind === 'bad' ? e.v > 0 : (h.tt === 'max' ? e.v <= h.target : e.v >= h.target); E[k] = { v: ok ? 1 : null, s: 0, n: e.v, u: now };
+        } else if (e.n != null) E[k] = { v: e.n, s: 0, u: now };            // back to the number it had before
+        else if (e.v) E[k] = { v: tickTo, s: 0, u: now };
+        else return;
+        n++;
+      });
+      return n;
+    },
+    countEntries: function (id) { var E = this.d.entries, pre = id + '|'; return Object.keys(E).filter(function (k) { return k.indexOf(pre) === 0 && (E[k].v != null || E[k].n != null); }).length; },
 
     /* Merge remote into local: per record, newer u wins. Settings: newer su wins. */
     merge: function (r) {

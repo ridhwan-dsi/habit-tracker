@@ -22,6 +22,7 @@
     archive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg>',
     unarchive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M12 17v-6M9.5 13.5L12 11l2.5 2.5"/></svg>',
     bin: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    skip: '<svg class="sk" viewBox="0 0 24 24"><path d="M6 7l5 5-5 5M13 7l5 5-5 5"/></svg>',
     check: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
     fold: '<svg class="i" viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>',
     // Bottom-bar fold control, one icon per mode: arrows apart = all expanded, arrows together = all collapsed,
@@ -43,7 +44,8 @@
   function met(h, v) { return h.tt === 'max' ? v <= h.target : v >= h.target; }
   function cellHtml(h, d) {
     var v = S.val(h.id, d.k), cls = 'c' + (scheduled(h, d.dt) ? '' : ' off') + (d.k === S.today() ? ' tdy' : ''), inner;
-    if (h.type === 'yn') {
+    if (S.skipped(h.id, d.k)) { cls += ' skp'; inner = ICON.skip; }
+    else if (h.type === 'yn') {
       if (v) { cls += h.kind === 'bad' ? ' bad' : ' ok'; inner = ICON.tick; } else inner = ICON.cross;
     } else {
       var has = v != null;
@@ -60,7 +62,7 @@
   function isGroup(h) { return !h.parent && subs(h.id).length > 0; }
   function subDone(x, k) { var v = S.val(x.id, k); return v != null && (x.type === 'yn' ? !!v : met(x, v)); }
   function groupRes(h, k) {
-    var ss = liveSubs(h.id), sum = 0, done = 0;
+    var ss = liveSubs(h.id).filter(function (x) { return !S.skipped(x.id, k); }), sum = 0, done = 0;   // a skipped sub-habit doesn't count
     ss.forEach(function (x) { var v = S.val(x.id, k); if (v != null) sum += x.type === 'yn' ? (v ? 1 : 0) : v; if (subDone(x, k)) done++; });
     var need = h.agg && h.agg.t === 'count' ? Math.min(h.agg.n || ss.length, ss.length) : 0;
     var ok = h.agg && h.agg.t === 'count' ? (ss.length > 0 && done >= need) : (h.target > 0 ? sum >= h.target : false);
@@ -120,7 +122,8 @@
     if (v === 'arch') return true;
     if (f.hideArchived && (h.archived || (g && g.archived))) return false;
     if (v !== 'win' && winOf(h)) return false;
-    if (v !== 'win' && f.hideEntered && !sel && enteredToday(h)) return false;
+    if (v !== 'win' && f.skipDays && f.hideSkipped && !sel && skippedToday(h)) return false;
+    if (v !== 'win' && f.hideEntered && !sel && enteredToday(h) && !skippedToday(h)) return false;
     return true;
   }
   // member: does it belong to this view (tab, starred, archived, outside its window)?
@@ -247,10 +250,12 @@
   /* ---- Filter: Hide archived, Hide entered (looks at TODAY only) ---- */
   function enteredToday(h) {
     if (isGroup(h)) { var t = S.today(), ss = liveSubs(h.id); return groupRes(h, t).ok || (ss.length > 0 && ss.every(function (x) { return enteredToday(x); })); }
+    if (S.skipped(h.id, S.today())) return true;
     var v = S.val(h.id, S.today());
     if (v == null) return false;
     return h.type === 'yn' ? !!v : met(h, v);   // measurable leaves only once today's target is met
   }
+  function skippedToday(h) { var t = S.today(); return isGroup(h) ? liveSubs(h.id).length > 0 && liveSubs(h.id).every(function (x) { return S.skipped(x.id, t); }) : S.skipped(h.id, t); }
   function setFold(ids, on) {
     var F = S.d.ui.fx = S.d.ui.fx || {};
     if (!on && foldMode() === 'shut' && ids.length === 1) { F = S.d.ui.fx = {}; }   // collapsed mode: only one group open at a time
@@ -311,10 +316,11 @@
       '<div class="numrow"><button class="btn step" data-act="numStep" data-d="' + (-st) + '" aria-label="Minus ' + num(st) + '">−</button>' +
       '<input id="numIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + num(v == null ? st : v) + '" placeholder="0">' +
       '<button class="btn step" data-act="numStep" data-d="' + st + '" aria-label="Plus ' + num(st) + '">+</button></div>' +
-      '<div class="row end"><button class="btn" data-act="numClear">Clear</button><span class="grow"></span><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="numOk">OK</button></div>', 'attop');
+      '<div class="row end"><button class="btn" data-act="numClear">Clear</button>' + (S.d.settings.skipDays ? '<button class="btn" data-act="numSkip">Skip</button>' : '') + '<span class="grow"></span><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="numOk">OK</button></div>', 'attop');
     var inp = document.getElementById('numIn');   // no keyboard until he taps the number
     inp.addEventListener('focus', function () { inp.select(); });
-    App._num = function (clear) {
+    App._num = function (clear, skip) {
+      if (skip) return closeSheet(function () { S.setSkip(h.id, k); App.refreshRow(h.id); });
       var t = inp.value.replace(',', '.').trim(), x = clear || t === '' ? null : parseFloat(t);
       if (x != null && !isFinite(x)) return App.toast('Enter a number');
       closeSheet(function () { S.setVal(h.id, k, x == null ? null : num(x)); App.refreshRow(h.id); });
@@ -327,7 +333,10 @@
     var h = S.habit(cell.dataset.h), k = cell.dataset.k; if (!h) return;
     if (isGroup(h)) return App.toast('A group shows its sub-habits’ result — mark those');
     if (h.type === 'num') return askNumber(h, k);
-    S.setVal(h.id, k, S.val(h.id, k) ? null : 1);
+    var sk = S.d.settings.skipDays;   // with Skip days on: empty → tick → skip → empty
+    if (S.skipped(h.id, k)) S.setVal(h.id, k, null);
+    else if (S.val(h.id, k)) { if (sk) S.setSkip(h.id, k); else S.setVal(h.id, k, null); }
+    else S.setVal(h.id, k, 1);
     if (navigator.vibrate) navigator.vibrate(15);
     App.refreshRow(h.id);
   }
@@ -490,8 +499,7 @@
       }).join('') + '</div></div>' +
       (inG ? '<p class="small muted">Sub-habit of <b style="color:' + esc(inG.color) + '">' + esc(inG.name) + '</b>. To take it out: hold its name and slide left.</p>' : '') +
       (grp ? groupFields :
-      '<div class="fl">Type' + seg('type', h.type, [['yn', 'Yes / No'], ['num', 'Measurable']], !h._new) +
-      (!h._new ? '<span class="small muted">Switching type comes in a later version.</span>' : '') + '</div>' +
+      '<div class="fl">Type' + seg('type', h.type, [['yn', 'Yes / No'], ['num', 'Measurable']]) + typeNote(h) + '</div>' +
       '<div class="fl">Habit is' + seg('kind', h.kind, [['good', 'Good — build it'], ['bad', 'Bad — quit it']]) +
       '<span class="small muted">' + (h.kind === 'bad' ? 'A tick means you did it (shown red). Empty days are clean days.' : 'A tick means you did it.') + '</span></div>') +
       (!grp && h.type === 'num' ?
@@ -517,6 +525,14 @@
       '</div>';
     if (sheetOpen === 'edit') { sheet.innerHTML = html; } else showSheet('edit', html, 'page');
   }
+  // v6: what switching type does to past days (only for a saved habit with history)
+  function typeNote(h) {
+    var o = !h._new && S.habit(h.id); if (!o || o.type === h.type) return '';
+    var n = S.countEntries(h.id); if (!n) return '';
+    if (h.type === 'yn') return '<span class="small muted">On Save, ' + n + ' past day' + (n === 1 ? '' : 's') + ' change: ' + (h.kind === 'bad' ? 'any amount becomes a tick' : 'days that met the target become ticks') + '. The numbers are kept, so switching back restores them.</span>';
+    return '<label class="inl">Each past tick becomes <input id="fTick" inputmode="decimal" value="' + num(h._tick != null ? h._tick : (h.target || 1)) + '"></label>' +
+      '<span class="small muted">Ticks that were numbers before go back to those numbers.</span>';
+  }
   function readInputs() {   // keep typed values before a redraw
     var g = function (id) { var el = document.getElementById(id); return el ? el.value : null; };
     if (g('fName') != null) draft.name = g('fName');
@@ -524,6 +540,7 @@
     if (g('fTarget') != null) { var t = parseFloat(g('fTarget').replace(',', '.')); draft.target = isFinite(t) ? t : draft.target; }
     if (g('fN') != null) { var n = parseInt(g('fN'), 10); draft.freq.n = n > 0 ? n : 1; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
+    if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (g('fFrom') != null) draft.win = { from: g('fFrom') || '', to: g('fTo') || '' };
     if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
   }
@@ -536,7 +553,9 @@
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {
-    var s = S.d.settings;
+    var s = S.d.settings, tg = function (k, label, hint) {
+      var on = !!s[k]; return '<button class="mi tg flat" data-act="setTg" data-k="' + k + '"><span>' + label + (hint ? '<br><span class="small muted">' + hint + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>';
+    };
     showSheet('settings',
       '<h3>Settings</h3>' +
       '<h4>Theme</h4><div class="row">' + [['dark', 'Dark'], ['light', 'Light']].map(function (t) { return '<button class="btn sm' + (s.theme === t[0] ? ' pri' : '') + '" data-act="theme" data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
@@ -546,6 +565,14 @@
         ribbon: 'Tabs open from the Tabs button on the bottom bar.',
         top: 'Your tabs sit in a row across the top; Filter and Add move to the bottom bar.',
         off: 'No tabs: one page with each tab’s name as a header above its habits.' }[tabsMode()] + '</p>' +
+      '<h4>Marking</h4>' + tg('shortPress', 'Toggle with short press', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
+      tg('skipDays', 'Skip days', 'Yes/no: hold again after a tick to mark a skip (neither done nor missed). Measurable: Skip button in the number box.') +
+      '<h4>Day &amp; week</h4><div class="fl">Extend day<div class="seg">' + [0, 1, 2, 3, 4, 5].map(function (x) {
+        return '<button class="' + ((s.extendH || 0) === x ? 'on' : '') + '" data-act="setNum" data-k="extendH" data-v="' + x + '">' + (x ? x + ' h' : 'Off') + '</button>';
+      }).join('') + '</div><span class="small muted">Until this many hours after midnight, you are still logging the day before.</span></div>' +
+      '<div class="fl" style="margin-top:12px">First day of week<div class="seg">' + [[6, 'Saturday'], [0, 'Sunday'], [1, 'Monday']].map(function (w) {
+        return '<button class="' + ((s.weekStart || 0) === w[0] ? 'on' : '') + '" data-act="setNum" data-k="weekStart" data-v="' + w[0] + '">' + w[1] + '</button>';
+      }).join('') + '</div></div>' +
       '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
@@ -714,14 +741,14 @@
       var f = S.d.settings, row = function (k, label) {
         return '<button class="mi tg" data-act="fToggle" data-k="' + k + '"><span>' + label + '</span><span class="box' + (f[k] ? ' on' : '') + '">' + (f[k] ? ICON.check : '') + '</span></button>';
       };
-      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered'), 'menu');
+      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered') + (f.skipDays ? row('hideSkipped', 'Hide skip days') : ''), 'menu');
     },
     fToggle: function (el) { var k = el.dataset.k; S.d.settings[k] = !S.d.settings[k]; S.saveSettings(); App.render(); actions.filter(); },
     ef: function (el) {   // edit-form field change
       readInputs();
       var f = el.dataset.f, v = el.dataset.v, h = draft;
       if (f === 'color') h.color = v;
-      else if (f === 'type') { h.type = v; if (v === 'num' && h.target === 1 && !h.unit) h.target = 1; }
+      else if (f === 'type') { h.type = v; if (v === 'num') { if (!(h.target >= 0)) h.target = 1; if (!h.tt) h.tt = h.kind === 'bad' ? 'max' : 'min'; if (h.unit == null) h.unit = ''; } }
       else if (f === 'kind') { h.kind = v; if (!h._ttSet) h.tt = v === 'bad' ? 'max' : 'min'; }
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
@@ -740,8 +767,11 @@
       if (!h.name) { App.toast('Give the habit a name'); var n = document.getElementById('fName'); if (n) n.focus(); return; }
       if (h.type === 'num' && !(h.target >= 0)) return App.toast('Enter a target number');
       if (h.freq.t === 'days' && !h.freq.days.length) return App.toast('Pick at least one weekday');
-      delete h._new; delete h._ttSet;
-      closeSheet(function () { S.putHabit(h); App.render(); });
+      var o = !h._new && S.habit(h.id), sw = o && o.type !== h.type && S.countEntries(h.id);
+      if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
+      var tick = h._tick;
+      delete h._new; delete h._ttSet; delete h._tick;
+      closeSheet(function () { if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render(); if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted'); });
     },
     delHabit: function () {
       var id = draft.id, name = draft.name;
@@ -756,11 +786,13 @@
     },
     numOk: function () { App._num(false); },
     numClear: function () { App._num(true); },
+    numSkip: function () { App._num(true, true); },
     menu: openMenu,
     settings: function () { closeSheet(openSettings); },
     close: function () { closeSheet(); },
     confirmOk: function () { App._confirm(); },
     setTg: function (el) { var k = el.dataset.k, s = S.d.settings; s[k] = s[k] === false; S.saveSettings(); App.render(); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
+    setNum: function (el) { S.d.settings[el.dataset.k] = +el.dataset.v; S.saveSettings(); App.render(true); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
     tabsMode: function (el) { S.d.settings.tabsMode = el.dataset.v; S.saveSettings(); App.render(true); openSettings(); },
     theme: function (el) { S.d.settings.theme = el.dataset.t; document.documentElement.dataset.theme = el.dataset.t; S.saveSettings(); openSettings(); },
     share: function () { var u = location.origin + location.pathname; (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function () { App.toast('Link copied'); }, function () { App.toast(u); }); },
