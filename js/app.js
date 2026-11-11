@@ -455,7 +455,8 @@
     var groupFields =
       '<div class="fl">Group result' + seg('agg', a.t, [['count', 'Tick when done'], ['sum', 'Sum of values']]) +
       '<span class="small muted">' + (a.t === 'count' ? 'The group gets a tick when enough of its sub-habits are done that day.' : 'The group shows the total of its sub-habits (a tick counts as 1).') + '</span></div>' +
-      (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + Math.min(a.n || nSub, nSub) + '"> of ' + nSub + ' sub-habits are done</label>'
+      (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + (a.n || 1) + '"> sub-habits are done</label>' +
+          '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now. Until then the group shows how many are done, e.g. “2 of ' + (a.n || 1) + '”.' + ((a.n || 1) > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + '</span>'
         : '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min" autocomplete="off"></label>' +
           '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>');
     var html =
@@ -712,7 +713,6 @@
       h.name = (h.name || '').trim();
       if (!h.name) { App.toast('Give the habit a name'); var n = document.getElementById('fName'); if (n) n.focus(); return; }
       if (h.type === 'num' && !(h.target >= 0)) return App.toast('Enter a target number');
-      if (h.agg && h.agg.t === 'count' && S.habit(h.id) && isGroup(S.habit(h.id))) h.agg.n = Math.min(h.agg.n || 1, liveSubs(h.id).length);
       if (h.freq.t === 'days' && !h.freq.days.length) return App.toast('Pick at least one weekday');
       delete h._new; delete h._ttSet;
       closeSheet(function () { S.putHabit(h); App.render(); });
