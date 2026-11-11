@@ -223,11 +223,12 @@
         arch: 'No archived habits.',
         win: 'Nothing is waiting for its time window right now.'
       }[v];
-      root.innerHTML = bar +
+      var demoBar = S.demo ? '<div class="demobar"><span>Demo data · your own habits are safe</span><button class="btn sm" data-act="demoOff">Exit demo</button></div>' : '';
+      root.innerHTML = bar + demoBar +
         (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div></div>'
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
           : all.length ? '<div class="empty"><p>' + (f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p><button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
-          : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button></div>') + ribbon;
+          : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       root.classList.toggle('sublines', f.subLines !== false);
       sizeCols();
       sc = document.getElementById('sc');
@@ -552,6 +553,13 @@
     if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
   }
 
+  /* ---- SL 29 Demo data: switch between his data and a fresh example ---- */
+  function setDemo(on) {
+    sel = null; S.setDemo(on); S.d.ui.view = 'all';
+    document.documentElement.dataset.theme = S.d.settings.theme || 'dark';
+    App.render(true); App.toast(on ? 'Demo data on' : 'Your own habits are back');
+  }
+
   /* ---- Settings & menu ---- */
   function openMenu() {
     var g = S.habits().some(isGroup);
@@ -561,7 +569,7 @@
   }
   function openSettings() {
     var s = S.d.settings, tg = function (k, label, hint) {
-      var on = !!s[k]; return '<button class="mi tg flat" data-act="setTg" data-k="' + k + '"><span>' + label + (hint ? '<br><span class="small muted">' + hint + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>';
+      var on = k === 'demo' ? S.demo : !!s[k]; return '<button class="mi tg flat" data-act="setTg" data-k="' + k + '"><span>' + label + (hint ? '<br><span class="small muted">' + hint + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>';
     };
     showSheet('settings',
       '<h3>Settings</h3>' +
@@ -583,6 +591,7 @@
       '<h4>Groups</h4><button class="mi tg flat" data-act="setTg" data-k="subLines"><span>Lines between sub-habits</span><span class="box' + (s.subLines !== false ? ' on' : '') + '">' + (s.subLines !== false ? ICON.check : '') + '</span></button>' +
       '<button class="mi tg flat" data-act="setTg" data-k="starGroups"><span>In Starred, show the group above a starred sub-habit</span><span class="box' + (s.starGroups !== false ? ' on' : '') + '">' + (s.starGroups !== false ? ICON.check : '') + '</span></button>' +
       '<h4>App</h4><div class="frow"><label>Update app <span class="ver">' + esc(C.appVersion.split(' ·')[0]) + '</span></label><button class="btn sm" data-act="updateApp">Update</button></div>' +
+      tg('demo', 'Demo data', S.demo ? 'On: showing an example. Turn off to get your own habits back, exactly as they were.' : 'Show a filled example instead of your habits, e.g. to show someone the app. Your data stays untouched.') +
       '<div class="frow"><label>Share this app</label><button class="btn sm" data-act="share">Copy link</button></div>' +
       '<p class="small muted">Google sign-in and sync to your Drive arrive in a later version. Everything is saved on this device.</p>' +
       '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
@@ -832,16 +841,18 @@
     numSkip: function () { App._num(true, true); },
     menu: openMenu,
     settings: function () { closeSheet(openSettings); },
+    demoOn: function () { setDemo(true); },
+    demoOff: function () { setDemo(false); },
     close: function () { closeSheet(); },
     confirmOk: function () { App._confirm(); },
-    setTg: function (el) { var k = el.dataset.k, s = S.d.settings; s[k] = s[k] === false; S.saveSettings(); App.render(); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
+    setTg: function (el) { if (el.dataset.k === 'demo') { setDemo(!S.demo); var y0 = sheet.scrollTop; openSettings(); sheet.scrollTop = y0; return; } var k = el.dataset.k, s = S.d.settings; s[k] = s[k] === false; S.saveSettings(); App.render(); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
     setNum: function (el) { S.d.settings[el.dataset.k] = +el.dataset.v; S.saveSettings(); App.render(true); var y = sheet.scrollTop; openSettings(); sheet.scrollTop = y; },
     tabsMode: function (el) { S.d.settings.tabsMode = el.dataset.v; S.saveSettings(); App.render(true); openSettings(); },
     theme: function (el) { S.d.settings.theme = el.dataset.t; document.documentElement.dataset.theme = el.dataset.t; S.saveSettings(); openSettings(); },
     share: function () { var u = location.origin + location.pathname; (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function () { App.toast('Link copied'); }, function () { App.toast(u); }); },
     updateApp: function (el) {
       el.disabled = true; el.textContent = 'Updating…';
-      var files = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/store.js', 'js/sync.js', 'js/app.js', 'sw.js'];
+      var files = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/store.js', 'js/sync.js', 'js/demo.js', 'js/app.js', 'sw.js'];
       var sw = navigator.serviceWorker;
       var p1 = sw ? sw.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }) : Promise.resolve();
       var p2 = window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf('-assets') < 0; }).map(function (k) { return caches.delete(k); })); }) : Promise.resolve();

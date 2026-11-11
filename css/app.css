@@ -192,3 +192,7 @@ i.chev { display:block; }
 .hrow.sel .nmi, .hrow.sub.sel .nmi, .sublines .hrow.sub.sel + .hrow.sub .nmi, .sublines .hrow.sub + .hrow.sub.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), 6px 0 6px -6px rgba(0,0,0,.35); }
 .hrow.sel .c, .hrow.sub.sel .c, .hrow.sub.sel .c.tdy.off { background-color:var(--card2); }
 .hrow.ctx .nm { cursor:default; } .hrow.ctx .nmi span { font-style:italic; font-weight:500 !important; opacity:.75; }
+
+/* SL 29 demo strip */
+.demobar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 12px; background:var(--card2); color:var(--muted); font-size:13px; border-bottom:1px solid var(--line); }
+.demobar .btn { flex:none; }

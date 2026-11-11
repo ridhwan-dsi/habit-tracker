@@ -8,7 +8,7 @@
     gisReady: function () { return !!(window.google && google.accounts && google.accounts.oauth2); },
     set: function (st) { this.state = st; if (window.App) App.syncChanged(); },
     init: function () {
-      if (!this.enabled()) return;
+      if (!this.enabled() || S.demo) return;
       try { var t = JSON.parse(sessionStorage.getItem(TK)); if (t && t.exp > Date.now() + 60000 && t.acct === S.d.acct) { this.tok = t.tok; this.exp = t.exp; } } catch (e) {}
       if (this.tok) { this.pull(); return; }
       if (S.d.acct) {
@@ -75,7 +75,7 @@
     schedule: function () { var self = this; if (!this.tok) return; clearTimeout(this.timer); this.timer = setTimeout(function () { self.push(); }, 2500); },
     push: function (force) {
       var self = this;
-      if (!this.tok) return Promise.resolve();
+      if (!this.tok || S.demo) return Promise.resolve();   // demo data never syncs
       if (!S.dirty) { if (force) this.lastSync = Date.now(); this.set('ok'); return Promise.resolve(); }
       this.set('syncing');
       var body = JSON.stringify(S.exportData()), p; S.dirty = false;

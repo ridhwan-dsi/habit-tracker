@@ -15,7 +15,7 @@
    entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
    tabs[id] = { id, u, name, order, hidden }   (v4) */
 (function () {
-  var KEY = 'habits.v1', SCHEMA = 1;
+  var REAL = 'habits.v1', DEMO = 'habits.demo', MODE = 'habits.mode', SCHEMA = 1, KEY = REAL;   // demo data has its own key
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
@@ -27,11 +27,22 @@
   function live(map) { return Object.keys(map).map(function (k) { return map[k]; }).filter(function (x) { return !x.d; }); }
 
   var S = {
-    d: null, dirty: false,
+    d: null, dirty: false, demo: false,
     load: function () {
-      try { this.d = JSON.parse(localStorage.getItem(KEY)); } catch (e) { this.d = null; }
-      if (!this.d) this.d = blank();
+      try { this.demo = localStorage.getItem(MODE) === 'demo'; } catch (e) {}
+      KEY = this.demo ? DEMO : REAL;
+      var d = null; try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+      if (!d && this.demo) { this.d = blank(); d = Demo.build(this.d.settings); }
+      this.d = d || blank();
       this.migrate();
+    },
+    /* SL 29 Demo data: on = a fresh example (with his current settings) under its own key; off = his own data back.
+       His own data is never touched while demo is on, and demo never syncs. */
+    setDemo: function (on) {
+      this.persist();
+      try { if (on) localStorage.setItem(MODE, 'demo'); else localStorage.removeItem(MODE); localStorage.removeItem(DEMO); } catch (e) {}
+      if (on) { var d = Demo.build(this.d.settings); this.demo = true; KEY = DEMO; this.d = d; this.migrate(); this.persist(); }
+      else this.load();
     },
     migrate: function () {
       var d = this.d, b = blank();
@@ -42,7 +53,7 @@
     },
     reset: function (acct) { this.d = blank(); this.d.acct = acct; this.persist(); },
     persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } },
-    save: function () { this.dirty = true; this.persist(); if (window.Sync) Sync.schedule(); },
+    save: function () { this.persist(); if (this.demo) return; this.dirty = true; if (window.Sync) Sync.schedule(); },
     saveUi: function () { this.persist(); },
     saveSettings: function () { this.d.su = Date.now(); this.save(); },
     id: function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); },
