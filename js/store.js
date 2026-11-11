@@ -9,7 +9,8 @@
      parent: null,                  // v3 sub-habits: id of the group habit
      isGroup: false, agg: { t:'sum'|'count', n },                 // v3 group result
      tab: null, star: false,        // v4
-     win: { from: '', to: '' },     // v4 time window 'HH:MM'
+     win: { from: '', to: '' },     // v4 time window 'HH:MM' (show from / hide after; blank = no limit)
+     step: null,                    // v4 measurable: default value & +/- step (blank = 1)
      archived: false }
    entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
    tabs[id] = { id, u, name, order, hidden }   (v4) */
@@ -63,7 +64,7 @@
     newHabit: function () {
       return { name: '', color: '#7FB3FF', type: 'yn', kind: 'good', unit: '', target: 1, tt: 'min',
         freq: { t: 'day', n: 1, days: [] }, parent: null, isGroup: false, agg: { t: 'count', n: 1 },
-        tab: null, star: false, win: { from: '', to: '' }, archived: false };
+        tab: null, star: false, win: { from: '', to: '' }, step: null, archived: false };
     },
     putHabit: function (h) {
       if (!h.id) { h.id = this.id(); h.order = this.habits().reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1; }
@@ -84,6 +85,27 @@
       this.d.habits[id] = { id: id, d: 1, u: Date.now() };
       var E = this.d.entries, now = Date.now();
       Object.keys(E).forEach(function (k) { if (k.indexOf(id + '|') === 0) E[k] = { v: null, u: now }; });
+      this.save();
+    },
+
+    /* ---- tabs (v4): a habit belongs to one tab or none; sub-habits follow their group ---- */
+    tabs: function () { return live(this.d.tabs).sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); },
+    tab: function (id) { var t = id && this.d.tabs[id]; return t && !t.d ? t : null; },
+    putTab: function (t) {
+      if (!t.id) { t.id = this.id(); t.order = this.tabs().reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1; t.hidden = false; }
+      t.u = Date.now(); this.d.tabs[t.id] = t; this.save(); return t;
+    },
+    moveTab: function (id, dir) {   // swap with the neighbour among visible tabs
+      var vis = this.tabs().filter(function (t) { return !t.hidden; }), i = vis.findIndex(function (t) { return t.id === id; }), j = i + dir;
+      if (i < 0 || j < 0 || j >= vis.length) return false;
+      var a = vis[i], b = vis[j], o = a.order, now = Date.now(); a.order = b.order; b.order = o; a.u = b.u = now;
+      this.save(); return true;
+    },
+    delTab: function (id) {   // its habits stay, with no tab
+      var now = Date.now();
+      this.habits().forEach(function (h) { if (h.tab === id) { h.tab = null; h.u = now; } });
+      this.d.tabs[id] = { id: id, d: 1, u: now };
+      if (this.d.ui.view === id) this.d.ui.view = 'all';
       this.save();
     },
 
