@@ -35,6 +35,7 @@
     list: '<svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
     tabs: '<svg class="i" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="M3 7V5h6l2 2"/></svg>',
     chart: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
+    scale: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9.5a5 5 0 018 0M12 9.5l1.6-2"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var VIEW_NAME = { all: 'Habits', star: 'Starred', arch: 'Archived', win: 'Outside time window' };
@@ -218,7 +219,8 @@
         rb('viewArch', ICON.archive, 'Archived', v === 'arch') +
         rb('viewWin', ICON.clock, 'Later', v === 'win', wc ? '<i class="bdg">' + wc + '</i>' : '') +
         (all.some(isGroup) ? '<button class="rbtn ionly" data-act="foldCycle" aria-label="' + { open: 'All groups expanded', shut: 'All groups collapsed', man: 'Groups as set in Edit' }[foldMode()] + '">' +
-          { open: ICON.fOpen, shut: ICON.fShut, man: ICON.fMan }[foldMode()] + '</button>' : '') + '</nav>';
+          { open: ICON.fOpen, shut: ICON.fShut, man: ICON.fMan }[foldMode()] + '</button>' : '') +
+        rb('weight', ICON.scale, 'Weight', false) + '</nav>';
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
         arch: 'No archived habits.',
@@ -303,7 +305,9 @@
   function closeSheet(then) { if (then) after.push(then); if (!sheetOpen) return flush(); if (!closing) { closing = true; history.back(); } }
   function flush() { var q = after; after = []; q.forEach(function (f) { f(); }); }
   window.addEventListener('popstate', function () {
+    var wasW = !closing && (sheetOpen === 'wlog' || sheetOpen === 'wset');   // phone Back on a weight dialog → back to the Weight screen
     closing = false;
+    if (wasW) { hideSheet(); flush(); return openWeight(true); }
     if (sheetOpen) hideSheet(); else if (sel) { sel = null; App.render(); }
     flush();
   });
@@ -496,6 +500,84 @@
     if (sheetOpen === 'stats' || sheetOpen === 'edit') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
+
+  /* ---- SL 34 Weight: its own screen from the bottom bar. One reading a day in kg (2 decimals), BMI from a height
+     entered once, change over week / month / year, optional target drawn as a flat line. ---- */
+  var wRange = 'week', MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function kg(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+  function dLab(k) { var p = k.split('-'), t = S.today(); return k === t ? 'Today' : (+p[2]) + ' ' + MON3[+p[1] - 1] + (p[0] !== t.slice(0, 4) ? ' ' + p[0] : ''); }
+  function kAgo(k, n) { var p = k.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2] - n, 12); return S.key(d); }
+  function bmiTxt(v) {
+    var h = S.d.settings.heightCm; if (!h) return '';
+    var b = v / Math.pow(h / 100, 2), c = b < 18.5 ? 'Underweight' : b < 25 ? 'Healthy' : b < 30 ? 'Overweight' : 'Obese';
+    return 'BMI ' + b.toFixed(1) + ' · ' + c;
+  }
+  function openWeight(keepY) {
+    var L = S.wList(), st = S.d.settings, tgt = st.wTarget, last = L[L.length - 1], tk = S.today();
+    var span = { week: 7, month: 30, year: 365 }[wRange], from = kAgo(tk, span);
+    var R = L.filter(function (e) { return e.k >= from; });
+    var base = null; L.forEach(function (e) { if (e.k <= from) base = e; }); if (!base) base = R[0];
+    var chg = last && base && base !== last ? last.v - base.v : null;
+    var toward = chg == null || !tgt ? null : (last.v > tgt) === (chg < 0) || Math.abs(chg) < 0.005;
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>Weight</h2>' +
+      '<button class="ib" data-act="wLog" aria-label="Log a weight">' + ICON.plus + '</button></div><div class="stats">' +
+      '<button class="wnow" data-act="wLog" data-k="' + tk + '">' + (last ? '<span>' + dLab(last.k) + '</span><b>' + kg(last.v) + ' <small>kg</small></b>' + (bmiTxt(last.v) ? '<em>' + bmiTxt(last.v) + '</em>' : '') : '<b>No weight yet</b>') +
+        '<i>' + (last && last.k === tk ? 'Tap to change today' : 'Tap to log today') + '</i></button>' +
+      (L.length ? '<div class="seg">' + [['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(function (r) { return '<button class="' + (wRange === r[0] ? 'on' : '') + '" data-act="wRange" data-v="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="tiles"><div class="tile"><span>' + (chg == null ? 'Change' : chg <= 0 ? 'Lost' : 'Gained') + ' · last ' + { week: '7 days', month: '30 days', year: 'year' }[wRange] + '</span><b class="' + (toward == null ? '' : toward ? 'up' : 'down') + '">' + (chg == null ? '–' : kg(Math.abs(chg)) + ' kg') + '</b>' + (chg != null ? '<em>from ' + kg(base.v) + ' on ' + dLab(base.k) + '</em>' : '<em>needs two readings</em>') + '</div>' +
+        '<div class="tile"><span>Target</span><b>' + (tgt ? (Math.abs(last.v - tgt) < 0.005 ? 'Reached' : kg(Math.abs(last.v - tgt)) + ' kg') : '–') + '</b><em>' + (tgt ? (Math.abs(last.v - tgt) < 0.005 ? kg(tgt) + ' kg' : (last.v > tgt ? 'to lose' : 'to gain') + ' · goal ' + kg(tgt)) : '<a data-act="wSetup">Set a target</a>') + '</em></div></div>' +
+      wChart(R, tgt, from, tk) +
+      '<section class="stc"><h4>Recent</h4>' + L.slice(-14).reverse().map(function (e, i, A) {
+        var prev = A[i + 1], d = prev ? e.v - prev.v : null;
+        return '<button class="wrow" data-act="wLog" data-k="' + e.k + '"><span>' + dLab(e.k) + '</span><b>' + kg(e.v) + '</b><em class="' + (d == null || Math.abs(d) < 0.005 ? '' : d < 0 ? 'dn' : 'upw') + '">' + (d == null ? '' : (d > 0 ? '+' : d < 0 ? '−' : '±') + kg(Math.abs(d))) + '</em></button>';
+      }).join('') + '</section>' : '') +
+      '<button class="mi wset" data-act="wSetup"><span>Height ' + (st.heightCm ? st.heightCm + ' cm' : 'not set') + ' · Target ' + (tgt ? kg(tgt) + ' kg' : 'none') + '</span><span class="small muted">Change</span></button></div>';
+    var y = sheet.scrollTop, inW = /^w(eight|log|set)$/.test(sheetOpen || '');
+    if (inW) { sheetOpen = 'weight'; sheet.className = 'sheet page'; sheet.innerHTML = html; scrim.hidden = true; sheet.scrollTop = keepY ? y : 0; } else showSheet('weight', html, 'page');
+  }
+  function wChart(R, tgt, from, tk) {
+    if (R.length < 2) return '<section class="stc"><p class="small muted" style="margin:0">The graph appears once there are two readings in this range.</p></section>';
+    var W = 340, H = 150, pl = 30, pr = 6, pt = 10, pb = 20;
+    var vs = R.map(function (e) { return e.v; }), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), spr = Math.max(0.5, hi - lo);
+    var tIn = tgt && tgt >= lo - spr && tgt <= hi + spr;   // a far target would squash the curve flat: note it instead
+    if (tIn) { lo = Math.min(lo, tgt); hi = Math.max(hi, tgt); }
+    var pad = Math.max(0.3, (hi - lo) * 0.12); lo -= pad; hi += pad;
+    var t0 = new Date(from + 'T12:00:00').getTime(), t1 = new Date(tk + 'T12:00:00').getTime();
+    var X = function (k) { return pl + (new Date(k + 'T12:00:00').getTime() - t0) / (t1 - t0) * (W - pl - pr); }, Y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
+    var path = R.map(function (e, i) { return (i ? 'L' : 'M') + X(e.k).toFixed(1) + ' ' + Y(e.v).toFixed(1); }).join('');
+    var ticks = [lo + (hi - lo) * 0.15, (lo + hi) / 2, hi - (hi - lo) * 0.15];
+    return '<section class="stc"><svg viewBox="0 0 ' + W + ' ' + H + '" class="chart wch">' +
+      ticks.map(function (v) { return '<line x1="' + pl + '" x2="' + W + '" y1="' + Y(v) + '" y2="' + Y(v) + '" class="gl"/><text x="' + (pl - 4) + '" y="' + (Y(v) + 3.5) + '" class="yl">' + v.toFixed(1) + '</text>'; }).join('') +
+      (tgt && !tIn ? '<text x="' + (W - 2) + '" y="' + (tgt < lo ? H - pb - 4 : pt + 8) + '" class="tlt">target ' + kg(tgt) + (tgt < lo ? ' ↓' : ' ↑') + '</text>' : '') +
+      (tIn ? '<line x1="' + pl + '" x2="' + W + '" y1="' + Y(tgt) + '" y2="' + Y(tgt) + '" class="tl"/><text x="' + (W - 2) + '" y="' + (Y(tgt) - 4) + '" class="tlt">target ' + kg(tgt) + '</text>' : '') +
+      '<path d="' + path + '" class="wl"/>' + (R.length <= 40 ? R.map(function (e) { return '<circle cx="' + X(e.k) + '" cy="' + Y(e.v) + '" r="2.6" class="wd"/>'; }).join('') : '') +
+      '<text x="' + pl + '" y="' + (H - 3) + '" class="cl" text-anchor="start">' + dLab(from) + '</text><text x="' + W + '" y="' + (H - 3) + '" class="cl" text-anchor="end">Today</text></svg></section>';
+  }
+  function wLog(k) {
+    var L = S.wList(), cur = (S.d.weights[k] || {}).v, last = L[L.length - 1], tk = S.today();
+    wDlg('wlog', '<h3>Weight</h3><label class="fl">Day<input type="date" id="wDate" value="' + k + '" max="' + tk + '"></label>' +
+      '<div class="numrow" style="margin-top:12px"><button class="btn step" data-act="wStep" data-d="-0.1" aria-label="Minus 0.1">−</button>' +
+      '<input id="wIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + (cur != null ? kg(cur) : last ? kg(last.v) : '') + '" placeholder="kg">' +
+      '<button class="btn step" data-act="wStep" data-d="0.1" aria-label="Plus 0.1">+</button></div><p class="small muted" style="margin-top:6px">In kg, up to 2 decimals (e.g. 78.45). Tap the number to type.</p>' +
+      '<div class="row end">' + (cur != null ? '<button class="btn danger-o" data-act="wDel">Delete</button><span class="grow"></span>' : '') + '<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSave">Save</button></div>');
+    var inp = document.getElementById('wIn'); inp.addEventListener('focus', function () { inp.select(); });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') actions.wSave(); });
+    document.getElementById('wDate').addEventListener('change', function () {   // switching day shows that day's reading
+      var v = (S.d.weights[this.value] || {}).v; if (v != null) inp.value = kg(v);
+    });
+  }
+  function wSetup() {
+    var st = S.d.settings;
+    wDlg('wset', '<h3>Height &amp; target</h3><div class="two"><label class="fl">Height (cm)<input id="wH" inputmode="decimal" value="' + (st.heightCm || '') + '" placeholder="e.g. 172"></label>' +
+      '<label class="fl">Target (kg)<input id="wT" inputmode="decimal" value="' + (st.wTarget ? kg(st.wTarget) : '') + '" placeholder="optional"></label></div>' +
+      '<p class="small muted" style="margin-top:8px">Height is used only for BMI. Leave the target blank for none.</p>' +
+      '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSetSave">Save</button></div>');
+  }
+  function wDlg(name, html) {   // a dialog over the Weight screen, which stays visible behind it
+    if (!/^w(eight|log|set)$/.test(sheetOpen || '')) openWeight(); else openWeight(true);
+    sheet.insertAdjacentHTML('beforeend', '<div class="wscrim" data-act="close"></div><div class="wdlg">' + html + '</div>'); sheetOpen = name;
+  }
+  function wBack() { openWeight(true); }   // dialogs swap in place on the Weight screen's history entry
 
   /* ---- Create / edit habit (full-screen page) ---- */
   var draft = null;
@@ -876,7 +958,26 @@
     settings: function () { closeSheet(openSettings); },
     demoOn: function () { setDemo(true); },
     demoOff: function () { setDemo(false); },
-    close: function () { if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    weight: function () { openWeight(); },
+    wRange: function (el) { wRange = el.dataset.v; openWeight(true); },
+    wLog: function (el) { wLog(el.dataset.k || S.today()); },
+    wStep: function (el) { var i = document.getElementById('wIn'), v = parseFloat((i.value || '0').replace(',', '.')) || 0; i.value = kg(Math.max(0, v + +el.dataset.d)); },
+    wSave: function () {
+      var k = document.getElementById('wDate').value || S.today(), t = document.getElementById('wIn').value.replace(',', '.').trim(), v = parseFloat(t);
+      if (!(v > 0 && v < 500)) return App.toast('Enter your weight in kg');
+      if (k > S.today()) return App.toast('That day hasn’t come yet');
+      S.wSet(k, v); wBack();
+    },
+    wDel: function () { var k = document.getElementById('wDate').value; S.wSet(k, null); wBack(); App.toast('Deleted'); },
+    wSetup: function () { wSetup(); },
+    wSetSave: function () {
+      var h = parseFloat(document.getElementById('wH').value.replace(',', '.')), t = parseFloat(document.getElementById('wT').value.replace(',', '.'));
+      if (document.getElementById('wH').value.trim() && !(h > 50 && h < 260)) return App.toast('Height in cm, e.g. 172');
+      if (document.getElementById('wT').value.trim() && !(t > 0 && t < 500)) return App.toast('Target in kg, e.g. 75');
+      S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
+      S.saveSettings(); wBack();
+    },
+    close: function () { if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
     statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
     stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },

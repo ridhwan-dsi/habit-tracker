@@ -236,3 +236,20 @@ i.chev { display:block; }
 .wbk > span:nth-child(-n+5) { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
 .wbk > *:nth-child(5n+2), .wbk > *:nth-child(5n+3), .wbk > *:nth-child(5n+4), .wbk > *:nth-child(5n) { text-align:right; }
 .wbk em { font-style:normal; font-size:10.5px; color:var(--muted); } .wbk .up { color:var(--pri); } .wbk .down { color:var(--bad); } .wbk .muted { color:var(--muted); }
+/* ---- SL 34 weight screen ---- */
+.wnow { display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; text-align:left; font:inherit; color:var(--ink); background:var(--card); border:0; border-radius:16px; padding:14px 16px; cursor:pointer; }
+.wnow span { font-size:12px; color:var(--muted); } .wnow b { font-size:34px; font-weight:700; line-height:1.15; } .wnow b small { font-size:16px; color:var(--muted); font-weight:500; }
+.wnow em { font-style:normal; font-size:13px; color:var(--ink); background:var(--card2); border-radius:8px; padding:2px 8px; margin-top:4px; } .wnow i { font-style:normal; font-size:12px; color:var(--pri); margin-top:6px; }
+.tile b.up { color:var(--pri); } .tile b.down { color:var(--bad); } .tile em a { color:var(--pri); cursor:pointer; }
+.wch .gl { stroke:var(--line); stroke-width:1; } .wch .yl { font-size:10px; fill:var(--muted); text-anchor:end; }
+.wch .wl { fill:none; stroke:var(--pri); stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round; } .wch .wd { fill:var(--pri); }
+.wrow { display:grid; grid-template-columns:1fr auto 64px; gap:10px; width:100%; font:inherit; color:var(--ink); background:none; border:0; border-top:1px solid var(--line); padding:10px 0; text-align:left; cursor:pointer; }
+.wrow:first-of-type { border-top:0; } .wrow span { color:var(--muted); } .wrow em { font-style:normal; text-align:right; font-size:13px; color:var(--muted); } .wrow em.dn { color:var(--pri); } .wrow em.upw { color:var(--bad); }
+.wset { display:flex; justify-content:space-between; align-items:center; padding:12px 4px; }
+.sheet input[type=date] { color-scheme:dark; } [data-theme=light] .sheet input[type=date] { color-scheme:light; }
+.wscrim { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:12; }
+.wdlg { position:fixed; top:0; left:0; right:0; max-width:720px; margin:0 auto; z-index:13; background:var(--card); border-radius:0 0 18px 18px; padding:calc(16px + env(safe-area-inset-top)) 18px 18px; }
+.wdlg h3 { margin:0 0 10px; font-size:18px; }
+.wdlg input { width:100%; font:inherit; font-size:16px; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); outline:none; }
+.wdlg .numrow input { font-size:24px; font-weight:600; text-align:center; } .wdlg input:focus { border-color:var(--pri); }
+.wdlg input[type=date] { color-scheme:dark; } [data-theme=light] .wdlg input[type=date] { color-scheme:light; }

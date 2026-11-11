@@ -13,14 +13,15 @@
      step: null,                    // v4 measurable: default value & +/- step (blank = 1)
      archived: false }
    entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
-   tabs[id] = { id, u, name, order, hidden }   (v4) */
+   tabs[id] = { id, u, name, order, hidden }   (v4)
+   weights['YYYY-MM-DD'] = { v: kg|null, u }   (SL 34); settings.heightCm, settings.wTarget */
 (function () {
   var REAL = 'habits.v1', DEMO = 'habits.demo', MODE = 'habits.mode', SCHEMA = 1, KEY = REAL;   // demo data has its own key
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
       settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon', subLines: true, starGroups: true, hideSkipped: false },
-      habits: {}, entries: {}, tabs: {}, ui: {}
+      habits: {}, entries: {}, tabs: {}, weights: {}, ui: {}
     };
   }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -145,9 +146,13 @@
     countEntries: function (id) { var E = this.d.entries, pre = id + '|'; return Object.keys(E).filter(function (k) { return k.indexOf(pre) === 0 && (E[k].v != null || E[k].n != null); }).length; },
 
     /* Merge remote into local: per record, newer u wins. Settings: newer su wins. */
+    /* ---- SL 34 weight log: weights['YYYY-MM-DD'] = { v: kg|null, u } (null = deleted); height & target live in settings ---- */
+    wList: function () { var W = this.d.weights || {}; return Object.keys(W).filter(function (k) { return W[k].v != null; }).sort().map(function (k) { return { k: k, v: W[k].v }; }); },
+    wSet: function (k, v) { this.d.weights[k] = { v: v == null ? null : Math.round(v * 100) / 100, u: Date.now() }; this.save(); },
+
     merge: function (r) {
       var L = this.d;
-      ['habits', 'entries', 'tabs'].forEach(function (m) {
+      ['habits', 'entries', 'tabs', 'weights'].forEach(function (m) {
         var R = r[m] || {}; L[m] = L[m] || {};
         Object.keys(R).forEach(function (k) { var a = R[k], b = L[m][k]; if (!b || (a.u || 0) > (b.u || 0)) L[m][k] = a; });
       });

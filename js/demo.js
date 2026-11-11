@@ -45,8 +45,14 @@
           E[h.id + '|' + k] = { v: x[2] ? x[2]() : 1, s: 0, u: now };
         });
       }
+      var Wt = {}, kg = 81.2;   // SL 34: a slow downward trend with day-to-day noise, a few days not weighed
+      for (var j = 150; j >= 0; j--) {
+        var wd2 = new Date(t); wd2.setDate(t.getDate() - j); kg += -0.018 + (rnd() - 0.5) * 0.35;
+        if (rnd() < 0.8) Wt[Store.key(wd2)] = { v: Math.round(kg * 100) / 100, u: now };
+      }
+      var st = JSON.parse(JSON.stringify(settings)); st.heightCm = 172; st.wTarget = 75;
       return { schema: 1, acct: null, su: 0, demo: true,
-        settings: JSON.parse(JSON.stringify(settings)), habits: H, entries: E, tabs: T, ui: { view: 'all' } };
+        settings: st, habits: H, entries: E, tabs: T, weights: Wt, ui: { view: 'all' } };
     }
   };
 })();
