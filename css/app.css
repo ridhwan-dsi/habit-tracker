@@ -14,7 +14,7 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 /* ---- main grid: one scroller both ways; date row sticks to the top, habit names stick to the left ---- */
 .sc { flex:1; overflow:auto; overscroll-behavior:contain; padding:0 12px 24px 0; scroll-snap-type:x proximity; scroll-padding-left:calc(var(--nw,180px) + 12px); scrollbar-width:none; }
 .sc::-webkit-scrollbar { display:none; }
-.grid { width:max-content; }
+.grid { width:max-content; position:relative; }
 .drow, .hrow { display:flex; }
 .drow { position:sticky; top:0; z-index:3; background:var(--head); padding:2px 0 6px; }
 .nm { position:sticky; left:0; z-index:2; width:calc(var(--nw,180px) + 12px); flex:none; padding-left:12px; background:var(--bg); display:flex; }
@@ -90,3 +90,22 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 
 #toast { position:fixed; left:50%; bottom:calc(32px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); background:#33373D; color:#fff; padding:10px 16px; border-radius:20px; font-size:14px; opacity:0; pointer-events:none; transition:.25s; z-index:20; max-width:90vw; }
 #toast.on { opacity:1; transform:translateX(-50%); }
+
+/* ---- v2: select mode, drag, filter ---- */
+.hrow .nm { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.nm.press .nmi, .hrow.held .nmi { background:var(--line); }
+.hrow.sel .nmi { background:var(--line); box-shadow:inset 3px 0 0 var(--pri), 6px 0 6px -6px rgba(0,0,0,.35); }
+.hrow.sel .c { background:var(--card2); }
+.hrow.arch .nmi span { opacity:.55; }
+.hrow.arch .nmi::after { content:'Archived'; font-size:10px; color:var(--muted); margin-left:auto; padding-left:6px; flex:none; }
+.hrow { position:relative; transition:transform .12s; }
+.hrow.drag { z-index:5; transition:none; filter:drop-shadow(0 8px 16px rgba(0,0,0,.55)); }
+.hrow.drag .nmi, .hrow.drag .c { background:var(--card2); }
+.selbar h1 { padding-left:4px; }
+.ib[disabled] { opacity:.35; }
+.ib.lit { color:var(--pri); }
+.mi.tg { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.box { width:22px; height:22px; border-radius:6px; border:2px solid var(--muted); display:grid; place-items:center; flex:none; }
+.box.on { background:var(--pri); border-color:var(--pri); color:var(--pri-ink); }
+.box .i { width:16px; height:16px; stroke-width:3; }
+.sheet .sw { margin-top:8px; }

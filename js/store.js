@@ -18,7 +18,7 @@
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
-      settings: { theme: 'dark', extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon' },
+      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon' },
       habits: {}, entries: {}, tabs: {}, ui: {}
     };
   }
@@ -68,6 +68,15 @@
     putHabit: function (h) {
       if (!h.id) { h.id = this.id(); h.order = this.habits().reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1; }
       h.u = Date.now(); this.d.habits[h.id] = h; this.save(); return h;
+    },
+    // New order for the habits shown on screen; hidden ones (archived, entered) keep their slots.
+    reorder: function (shownIds) {
+      var all = this.habits(), shown = {}, q = shownIds.slice(), now = Date.now();
+      shownIds.forEach(function (id) { shown[id] = 1; });
+      all.map(function (h) { return shown[h.id] ? q.shift() : h.id; }).forEach(function (id, i) {
+        var h = this.d.habits[id]; if (h && h.order !== i + 1) { h.order = i + 1; h.u = now; }
+      }, this);
+      this.save();
     },
     delHabit: function (id) {
       this.d.habits[id] = { id: id, d: 1, u: Date.now() };

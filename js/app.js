@@ -15,7 +15,14 @@
     more: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>',
     back: '<svg class="i" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
     tick: '<svg class="tk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
-    cross: '<svg class="xx" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>'
+    cross: '<svg class="xx" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+    filter: '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>',
+    pen: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
+    palette: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.1 0-.9.7-1.5 1.6-1.5H17a4 4 0 004-4c0-4.9-4-8.8-9-8.8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg>',
+    archive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg>',
+    unarchive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M12 17v-6M9.5 13.5L12 11l2.5 2.5"/></svg>',
+    bin: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    check: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
   };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
@@ -37,19 +44,29 @@
   var App = {
     render: function () {
       var sc = document.getElementById('sc'), keep = sc ? { l: sc.scrollLeft, t: sc.scrollTop } : null;
-      var days = S.days(NDAYS), list = S.habits().filter(function (h) { return !h.archived; });
+      var days = S.days(NDAYS), all = S.habits(), list = visible(all);
+      if (sel) Object.keys(sel).forEach(function (id) { if (!S.habit(id)) delete sel[id]; });
       var head = '<div class="drow"><div class="nm"></div>' + days.map(function (d, i) {
         return '<div class="dh' + (i === 0 ? ' tdy' : '') + '"><span>' + WD[d.dt.getDay()].toUpperCase() + '</span><b>' + d.dt.getDate() + '</b></div>';
       }).join('') + '</div>';
       var rows = list.map(function (h) {
-        return '<div class="hrow"><div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi"><span style="color:' + esc(h.color) + '">' + esc(h.name) + '</span></div></div>' +
+        return '<div class="hrow' + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '"><div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi"><span style="color:' + esc(h.color) + '">' + esc(h.name) + '</span></div></div>' +
           days.map(function (d) { return cellHtml(h, d); }).join('') + '</div>';
       }).join('');
-      root.innerHTML =
-        '<header class="top"><h1>Habits</h1>' +
+      var n = sel ? Object.keys(sel).length : 0, f = S.d.settings;
+      var bar = sel ?
+        '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
+        (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
+        '<button class="ib" data-act="selColor" aria-label="Change colour"' + (n ? '' : ' disabled') + '>' + ICON.palette + '</button>' +
+        '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
+        '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button></header>'
+        : '<header class="top"><h1>Habits</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
-        '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' +
-        (list.length ? '<div class="sc" id="sc"><div class="grid">' + head + rows + '</div></div>'
+        '<button class="ib' + (f.hideEntered || !f.hideArchived ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
+        '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>';
+      root.innerHTML = bar +
+        (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div></div>'
+          : all.length ? '<div class="empty"><p>' + (f.hideEntered ? 'All done for today.' : 'Nothing to show.') + '</p><button class="btn" data-act="filter">Filter</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button></div>');
       sizeCols();
       sc = document.getElementById('sc');
@@ -57,6 +74,7 @@
     },
     refreshRow: function (hid) {   // after a mark: redraw one row's cells, keep scroll
       var h = S.habit(hid); if (!h) return App.render();
+      if (visible([h]).length === 0) return App.render();   // Hide entered: row leaves once today is done
       S.days(NDAYS).forEach(function (d) {
         var el = root.querySelector('.c[data-h="' + hid + '"][data-k="' + d.k + '"]');
         if (el) el.outerHTML = cellHtml(h, d);
@@ -66,6 +84,31 @@
     toast: function (m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2600); }
   };
   window.App = App;
+
+  /* ---- Filter: Hide archived, Hide entered (looks at TODAY only) ---- */
+  function enteredToday(h) {
+    var v = S.val(h.id, S.today());
+    if (v == null) return false;
+    return h.type === 'yn' ? !!v : met(h, v);   // measurable leaves only once today's target is met
+  }
+  function visible(list) {
+    var f = S.d.settings;
+    return list.filter(function (h) {
+      if (h.archived && f.hideArchived) return false;
+      if (f.hideEntered && !sel && enteredToday(h)) return false;   // select mode shows everything you could act on
+      return true;
+    });
+  }
+
+  /* ---- Select mode (hold a habit name and release) ---- */
+  var sel = null;   // { id: true } while selecting
+  function allArchived() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.archived; }); }
+  function selStart(id) {
+    if (!sel) { sel = {}; history.pushState({ sel: 1 }, ''); }
+    sel[id] = true; App.render();
+  }
+  function selToggle(id) { if (sel[id]) delete sel[id]; else sel[id] = true; if (!Object.keys(sel).length) return selEnd(); App.render(); }
+  function selEnd(then) { if (then) after.push(then); if (!sel) return flush(); if (!closing) { closing = true; history.back(); } }
 
   // Habit-name column takes whatever is left after 4 day columns; older days scroll in from the right.
   function sizeCols() {
@@ -85,7 +128,11 @@
   function hideSheet() { sheetOpen = null; sheet.hidden = true; scrim.hidden = true; }
   function closeSheet(then) { if (then) after.push(then); if (!sheetOpen) return flush(); if (!closing) { closing = true; history.back(); } }
   function flush() { var q = after; after = []; q.forEach(function (f) { f(); }); }
-  window.addEventListener('popstate', function () { closing = false; if (sheetOpen) hideSheet(); flush(); });
+  window.addEventListener('popstate', function () {
+    closing = false;
+    if (sheetOpen) hideSheet(); else if (sel) { sel = null; App.render(); }
+    flush();
+  });
   scrim.addEventListener('click', function () { closeSheet(); });
 
   function confirmBox(msg, okTxt, cb) {
@@ -122,23 +169,79 @@
     App.refreshRow(h.id);
   }
 
-  // Long-press on a day cell marks it (short tap only hints, unless "Toggle with short press" is on).
-  var lp = null, HOLD = 450;
+  /* ---- Touch: hold a DAY CELL = mark it (short tap only hints, unless "Toggle with short press" is on).
+     Hold a HABIT NAME: release without moving = select; move up/down = drag to reorder.
+     Moving before the hold fires = an ordinary scroll, so nothing happens. ---- */
+  var lp = null, drag = null, HOLD = 450, quietClick = false;
   root.addEventListener('pointerdown', function (e) {
-    var cell = e.target.closest('.c'); if (!cell || e.button > 0) return;
-    lp = { cell: cell, x: e.clientX, y: e.clientY, fired: false };
-    lp.t = setTimeout(function () { if (lp) { lp.fired = true; cell.classList.remove('press'); mark(cell); } }, HOLD);
-    cell.classList.add('press');
+    if (e.button > 0 || drag) return;
+    quietClick = false;
+    var cell = e.target.closest('.c'), nm = e.target.closest('.hrow .nm');
+    if (!cell && !nm) return;
+    var el = cell || nm;
+    lp = { el: el, cell: cell, id: nm ? nm.dataset.id : null, x: e.clientX, y: e.clientY, fired: false, pid: e.pointerId };
+    lp.t = setTimeout(function () {
+      if (!lp) return; lp.fired = true; el.classList.remove('press');
+      if (cell) mark(cell);
+      else { if (navigator.vibrate) navigator.vibrate(20); el.closest('.hrow').classList.add('held'); }
+    }, HOLD);
+    el.classList.add('press');
   });
-  function lpCancel() { if (lp) { clearTimeout(lp.t); lp.cell.classList.remove('press'); } }
-  root.addEventListener('pointermove', function (e) { if (lp && (Math.abs(e.clientX - lp.x) > 10 || Math.abs(e.clientY - lp.y) > 10)) { lpCancel(); lp = null; } });
-  root.addEventListener('pointercancel', function () { lpCancel(); lp = null; });
+  function lpCancel() { if (lp) { clearTimeout(lp.t); lp.el.classList.remove('press'); var r = lp.el.closest('.hrow'); if (r) r.classList.remove('held'); } }
+  root.addEventListener('pointermove', function (e) {
+    if (drag) return dragMove(e);
+    if (!lp) return;
+    var dx = e.clientX - lp.x, dy = e.clientY - lp.y;
+    if (!lp.fired) { if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { lpCancel(); lp = null; } return; }
+    if (lp.id && Math.abs(dy) > 8) { var p = lp; lp = null; dragStart(p, e); }
+  });
+  root.addEventListener('pointercancel', function () { if (drag) dragEnd(true); lpCancel(); lp = null; });
   root.addEventListener('pointerup', function () {
+    if (drag) return dragEnd(false);
     if (!lp) return; lpCancel(); var p = lp; lp = null;
-    if (p.fired) return;
-    if (S.d.settings.shortPress) mark(p.cell); else App.toast('Hold to mark');
+    if (p.fired) {
+      quietClick = true;   // the click that follows a hold must not open Edit
+      if (p.id) { if (sel) selToggle(p.id); else selStart(p.id); }
+      return;
+    }
+    if (p.cell) { if (S.d.settings.shortPress) mark(p.cell); else App.toast('Hold to mark'); }
   });
-  root.addEventListener('contextmenu', function (e) { if (e.target.closest('.c')) e.preventDefault(); });
+  // Once a hold has fired, the page must not scroll under the finger (first touchmove is still cancelable).
+  root.addEventListener('touchmove', function (e) { if (drag || (lp && lp.fired)) e.preventDefault(); }, { passive: false });
+  root.addEventListener('contextmenu', function (e) { if (e.target.closest('.c, .nm')) e.preventDefault(); });
+
+  /* ---- Drag to reorder: the row follows the finger; neighbours swap as it passes their middle ---- */
+  function dragStart(p, e) {
+    var row = p.el.closest('.hrow'), r = row.getBoundingClientRect();
+    row.classList.remove('held'); row.classList.add('drag');
+    drag = { row: row, id: p.id, grab: p.y - r.top, y: e.clientY, sc: document.getElementById('sc'), moved: true };
+    drag.auto = requestAnimationFrame(autoScroll);
+    dragMove(e);
+  }
+  function rowTop(row) { return document.getElementById('grid').getBoundingClientRect().top + row.offsetTop; }
+  function dragMove(e) {
+    drag.y = e.clientY;
+    var row = drag.row, want = drag.y - drag.grab;
+    var prev = row.previousElementSibling, next = row.nextElementSibling;
+    if (prev && prev.classList.contains('hrow') && want < rowTop(prev) + prev.offsetHeight / 2) row.parentNode.insertBefore(row, prev);
+    else if (next && want + row.offsetHeight > rowTop(next) + next.offsetHeight / 2) row.parentNode.insertBefore(next, row);
+    row.style.transform = 'translateY(' + (want - rowTop(row)) + 'px)';
+  }
+  function autoScroll() {   // near the top/bottom edge, keep scrolling while dragging
+    if (!drag) return;
+    var r = drag.sc.getBoundingClientRect(), edge = 56, v = 0;
+    if (drag.y < r.top + edge) v = -Math.ceil((r.top + edge - drag.y) / 6);
+    else if (drag.y > r.bottom - edge) v = Math.ceil((drag.y - r.bottom + edge) / 6);
+    if (v) { drag.sc.scrollTop += v; dragMove({ clientY: drag.y }); }
+    drag.auto = requestAnimationFrame(autoScroll);
+  }
+  function dragEnd(cancel) {
+    var d = drag; drag = null; cancelAnimationFrame(d.auto); quietClick = true;
+    d.row.classList.remove('drag'); d.row.style.transform = '';
+    if (cancel) return App.render();
+    var ids = [].map.call(document.querySelectorAll('#grid .hrow'), function (r) { return r.dataset.row; });
+    S.reorder(ids); App.render();
+  }
 
   /* ---- Create / edit habit (full-screen page) ---- */
   var draft = null;
@@ -207,7 +310,36 @@
   /* ---- Actions ---- */
   var actions = {
     add: function () { openEdit(null); },
-    edit: function (el) { openEdit(el.dataset.id); },
+    edit: function (el) { if (sel) selToggle(el.dataset.id); else openEdit(el.dataset.id); },
+    selDone: function () { selEnd(); },
+    selEdit: function () { var id = Object.keys(sel)[0]; selEnd(function () { openEdit(id); }); },
+    selColor: function () {
+      showSheet('color', '<h3>Change colour</h3><div class="sw">' + COLORS.map(function (c) {
+        return '<button class="dot" style="background:' + c + '" data-act="pickColor" data-v="' + c + '" aria-label="Colour ' + c + '"></button>';
+      }).join('') + '</div><div class="row end"><button class="btn" data-act="close">Cancel</button></div>');
+    },
+    pickColor: function (el) {
+      var ids = Object.keys(sel), c = el.dataset.v;
+      closeSheet(function () { ids.forEach(function (id) { var h = S.habit(id); if (h) { h.color = c; S.putHabit(h); } }); selEnd(); });
+    },
+    selArchive: function () {
+      var ids = Object.keys(sel), arch = !allArchived();
+      ids.forEach(function (id) { var h = S.habit(id); if (h) { h.archived = arch; S.putHabit(h); } });
+      selEnd(function () { App.toast((arch ? 'Archived ' : 'Unarchived ') + ids.length + (arch && S.d.settings.hideArchived ? ' — see them via Filter' : '')); });
+    },
+    selDelete: function () {
+      var ids = Object.keys(sel);
+      confirmBox('Delete ' + (ids.length === 1 ? '“' + S.habit(ids[0]).name + '”' : ids.length + ' habits') + ' and all history? This can’t be undone.', 'Delete', function () {
+        ids.forEach(function (id) { S.delHabit(id); }); selEnd(function () { App.toast('Deleted'); });
+      });
+    },
+    filter: function () {
+      var f = S.d.settings, row = function (k, label) {
+        return '<button class="mi tg" data-act="fToggle" data-k="' + k + '"><span>' + label + '</span><span class="box' + (f[k] ? ' on' : '') + '">' + (f[k] ? ICON.check : '') + '</span></button>';
+      };
+      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered'), 'menu');
+    },
+    fToggle: function (el) { var k = el.dataset.k; S.d.settings[k] = !S.d.settings[k]; S.saveSettings(); App.render(); actions.filter(); },
     ef: function (el) {   // edit-form field change
       readInputs();
       var f = el.dataset.f, v = el.dataset.v, h = draft;
@@ -260,6 +392,7 @@
   };
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-act]'); if (!el) return;
+    if (quietClick && el.closest('.hrow')) { quietClick = false; return e.preventDefault(); }
     var fn = actions[el.dataset.act]; if (!fn) return;
     e.preventDefault();
     if (closing) after.push(function () { fn(el); }); else fn(el);
