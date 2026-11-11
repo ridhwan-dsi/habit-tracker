@@ -152,8 +152,35 @@
       return '<div class="wkc"><span class="wkv">' + (x.v == null ? '' : o.bad ? x.v : x.v + '%') + '</span><div class="wkt"><div style="height:' + hh + '%;background:' + (o.bad ? 'var(--bad)' : o.color) + ';opacity:' + (w === topW ? 1 : .55) + '"></div></div><span class="wkl">' + WD[w] + '</span></div>';
     }).join('') + '</div>' + (topW >= 0 && days.length > 21 ? '<p class="small muted">' + (o.bad ? 'You slip most on ' : 'Your strongest day is ') + FULL[topW] + (o.bad ? 's.' : '.') + '</p>' : '') + '</section>';
 
+    /* ---- SL 25 weekly buckets: each week's total against what the week asked for, with a running balance.
+       Good: expected = target × scheduled days (N-a-week: N × target). Bad measurable: the limit is a weekly budget.
+       The current week is judged on the days so far. Month-frequency and bad yes/no habits have no weekly quota. ---- */
+    var wkB = '';
+    if (f.t !== 'month' && !(o.bad && !o.num)) {
+      var per1 = o.num ? (o.target || 0) : 1, W8 = [], wkS = function (d) { return key(addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7))); }, wm = {};
+      days.forEach(function (d) {
+        var k = wkS(d); if (!wm[k]) { wm[k] = { k: k, dt: addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7)), got: 0, sch: 0 }; W8.push(wm[k]); }
+        var w = wm[k]; if (d.s) return;
+        if (d.sch && !(d.isT && !d.ok && !o.bad)) w.sch++;
+        if (o.num) { if (typeof d.v === 'number') w.got += d.v; } else if (d.ok && d.sch) w.got++;
+      });
+      W8 = W8.slice(-8);
+      if (W8.length && per1) {
+        var bal = 0;
+        W8.forEach(function (w) { w.exp = r1(f.t === 'week' ? Math.min(N, w.sch) * per1 : w.sch * per1); w.got = r1(w.got); w.diff = r1(o.bad ? w.exp - w.got : w.got - w.exp); if (f.t === 'week' && w === W8[W8.length - 1] && w.diff < 0) w.diff = 0; bal = r1(bal + w.diff); w.bal = bal; });
+        var u = o.num ? (o.unit ? ' ' + esc(o.unit) : '') : '';
+        var sg = function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v)); };
+        wkB = '<section class="stc"><h4>Weekly buckets' + (o.bad ? ' · weekly budget' : '') + '</h4><div class="wbk"><span>Week of</span><span>' + (o.bad ? 'Used' : 'Done') + '</span><span>' + (o.bad ? 'Budget' : 'Due') + '</span><span>Week</span><span>Running</span>' +
+          W8.slice().reverse().map(function (w, i) {
+            return '<span>' + w.dt.getDate() + ' ' + MON[w.dt.getMonth()] + (i === 0 ? ' <em>so far</em>' : '') + '</span><span>' + fmt(w.got) + '</span><span class="muted">' + fmt(w.exp) + '</span>' +
+              '<b class="' + (w.diff >= 0 ? 'up' : 'down') + '">' + sg(w.diff) + '</b><b class="' + (w.bal >= 0 ? 'up' : 'down') + '">' + sg(w.bal) + '</b>';
+          }).join('') + '</div><p class="small muted">' + (o.bad ? 'Budget = your daily limit × days. + means you stayed under it' : '+ means ahead of what the week asked for') +
+          '; Running carries it over from week to week' + u.replace(/^ /, ' (in ') + (u ? ')' : '') + '. Latest week first.</p></section>';
+      }
+    }
+
     return '<div class="tiles">' + tiles.map(function (t) { return '<div class="tile"><span>' + t[0] + '</span><b>' + esc(t[1]) + '</b>' + (t[2] ? '<em>' + esc(t[2]) + '</em>' : '') + '</div>'; }).join('') + '</div>' +
-      mom + cal + l30 + six + wk;
+      mom + wkB + cal + l30 + six + wk;
   }
   window.Stats = { build: build, key: key };
 })();

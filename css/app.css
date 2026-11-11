@@ -232,3 +232,7 @@ i.chev { display:block; }
 .wkc { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
 .wkv { font-size:11px; font-weight:600; min-height:14px; } .wkl { font-size:11px; color:var(--muted); }
 .wkt { width:100%; height:80px; background:var(--card2); border-radius:7px; display:flex; align-items:flex-end; overflow:hidden; } .wkt div { width:100%; border-radius:7px; }
+.wbk { display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr 1.1fr; gap:7px 6px; font-size:13px; align-items:baseline; }
+.wbk > span:nth-child(-n+5) { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.wbk > *:nth-child(5n+2), .wbk > *:nth-child(5n+3), .wbk > *:nth-child(5n+4), .wbk > *:nth-child(5n) { text-align:right; }
+.wbk em { font-style:normal; font-size:10.5px; color:var(--muted); } .wbk .up { color:var(--pri); } .wbk .down { color:var(--bad); } .wbk .muted { color:var(--muted); }
