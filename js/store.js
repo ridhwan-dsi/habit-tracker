@@ -5,7 +5,11 @@
      type: 'yn' | 'num',            // yes/no or measurable
      kind: 'good' | 'bad',          // bad: tick = did it (red), empty = clean
      unit, target, tt: 'min'|'max', // measurable: target and "At least" / "At most"
-     freq: { t: 'day'|'week'|'month'|'days', n, days:[0..6] },   // days = Sun 0 … Sat 6
+     freq: { t: 'day'|'week'|'month'|'days'|'rep', n, days:[0..6] },   // days = Sun 0 … Sat 6 (legacy weekdays = rep every 1 week)
+       rep (v5.5): ev = every N, u: 'd'|'w'|'m', days (weeks), md (day of month), a: 'YYYY-MM-DD' start,
+                   from: 'sch' (fixed schedule) | 'done' (next one counts from the day it was done, e.g. every 90 days)
+     miss: { t: 'drop'|'stay', keep: N|null },   // v5.5 if not done: disappear when the day ends, or stay due (at most keep days)
+     enf: false,                    // v5.5 group: its repeat + if-not-done settings apply to its sub-habits
      parent: null,                  // v3 sub-habits: id of the group habit
      isGroup: false, agg: { t:'sum'|'count', n },                 // v3 group result
      tab: null, star: false,        // v4
@@ -13,14 +17,14 @@
      step: null,                    // v4 measurable: default value & +/- step (blank = 1)
      archived: false }
    entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
-   tabs[id] = { id, u, name, order, hidden }   (v4)
+   tabs[id] = { id, u, name, short, order, hidden }   (v4; short name v5.5). No tab = the Main tab.
    weights['YYYY-MM-DD'] = { v: kg|null, u }   (SL 34); settings.heightCm, settings.wTarget */
 (function () {
   var REAL = 'habits.v1', DEMO = 'habits.demo', MODE = 'habits.mode', SCHEMA = 1, KEY = REAL;   // demo data has its own key
   function blank() {
     return {
       schema: SCHEMA, acct: null, su: 0,
-      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'ribbon', subLines: true, starGroups: true, hideSkipped: false },
+      settings: { theme: 'dark', hideArchived: true, hideEntered: false, extendH: 0, shortPress: false, skipDays: false, weekStart: 0, tabsMode: 'bottom', hideNotDue: true, subLines: true, starGroups: true, hideSkipped: false },
       habits: {}, entries: {}, tabs: {}, weights: {}, ui: {}
     };
   }
@@ -50,6 +54,7 @@
       var d = this.d, b = blank();
       Object.keys(b).forEach(function (k) { if (d[k] == null) d[k] = b[k]; });
       Object.keys(b.settings).forEach(function (k) { if (d.settings[k] == null) d.settings[k] = b.settings[k]; });
+      if (d.settings.tabsMode === 'ribbon') d.settings.tabsMode = 'bottom';   // v5.5: the Tabs sheet became a tab strip above the bottom bar
       // future: if (d.schema < 2) { ...reshape, never delete... }
       d.schema = SCHEMA;
     },
@@ -78,7 +83,7 @@
     newHabit: function () {
       return { name: '', color: '#7FB3FF', type: 'yn', kind: 'good', unit: '', target: 1, tt: 'min',
         freq: { t: 'day', n: 1, days: [] }, parent: null, isGroup: false, agg: { t: 'count', n: 1 },
-        tab: null, star: false, win: { from: '', to: '' }, step: null, archived: false };
+        tab: null, star: false, win: { from: '', to: '' }, step: null, miss: { t: 'drop', keep: null }, archived: false };
     },
     putHabit: function (h) {
       if (!h.id) { h.id = this.id(); h.order = this.habits().reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1; }

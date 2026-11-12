@@ -7,13 +7,13 @@
       var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
       var now = Date.now(), order = 0, H = {}, E = {}, T = {};
       function id() { return 'demo' + (++order).toString(36); }
-      var tabDaily = { id: 'demoTabD', u: now, name: 'Daily', order: 1, hidden: false };
-      var tabWeek = { id: 'demoTabW', u: now, name: 'Weekly', order: 2, hidden: false };
-      T[tabDaily.id] = tabDaily; T[tabWeek.id] = tabWeek;
+      var tabWeek = { id: 'demoTabW', u: now, name: 'Weekly', short: 'Wk', order: 1, hidden: false };
+      var tabMon = { id: 'demoTabM', u: now, name: 'Monthly', short: 'Mo', order: 2, hidden: false };
+      T[tabWeek.id] = tabWeek; T[tabMon.id] = tabMon;
       function habit(o) {
         var h = Object.assign(Store.newHabit(), o); h.id = id(); h.order = order; h.u = now; H[h.id] = h; return h;
       }
-      var D = tabDaily.id, W = tabWeek.id;
+      var D = null, W = tabWeek.id, M = tabMon.id, t0 = Store.todayDate(), ago = function (n) { var x = new Date(t0); x.setDate(t0.getDate() - n); return Store.key(x); };
       var list = [
         // [habit, chance done per day, value maker]
         [habit({ name: 'Morning walk', color: '#7FB3FF', type: 'num', unit: 'km', target: 3, step: 1, tab: D, star: true }), 0.75, function () { return Math.round((2 + rnd() * 3) * 10) / 10; }],
@@ -30,8 +30,10 @@
         [habit({ name: 'Social media', color: '#FF7A7A', kind: 'bad', type: 'num', unit: 'min', target: 30, tt: 'max', step: 10, tab: D }), 0.85, function () { return 10 * (1 + Math.floor(rnd() * 6)); }],
         [habit({ name: 'Evening reflection', color: '#9BE29B', tab: D, win: { from: '19:00', to: '' } }), 0.6],
         [habit({ name: 'Call family', color: '#F5A3D0', freq: { t: 'week', n: 2, days: [] }, tab: W }), 0.3],
-        [habit({ name: 'Clean desk', color: '#C9C27A', freq: { t: 'days', n: 1, days: [5] }, tab: W }), 0.8],
-        [habit({ name: 'Plan the week', color: '#7FB3FF', freq: { t: 'days', n: 1, days: [6] }, tab: W }), 0.85]);
+        [habit({ name: 'Surah Al-Kahf', color: '#9BE29B', freq: { t: 'rep', n: 1, ev: 1, u: 'w', days: [5], from: 'sch', a: ago(199) }, tab: W }), 0.85, null, function (dt) { return dt.getDay() === 5; }],
+        [habit({ name: 'Plan the week', color: '#7FB3FF', freq: { t: 'rep', n: 1, ev: 1, u: 'w', days: [6], from: 'sch', a: ago(199) }, miss: { t: 'stay', keep: 3 }, tab: W }), 0.6, null, function (dt) { return dt.getDay() === 6 || dt.getDay() === 0; }],
+        [habit({ name: 'Pay rent', color: '#F2A65A', freq: { t: 'rep', n: 1, ev: 1, u: 'm', md: 1, from: 'sch', a: ago(199) }, miss: { t: 'stay', keep: null }, tab: M }), 0.7, null, function (dt) { return dt.getDate() <= 4 && dt.getDate() > 1; }],
+        [habit({ name: 'Car oil change', color: '#C4A49A', freq: { t: 'rep', n: 1, ev: 90, u: 'd', from: 'done', a: ago(170) }, miss: { t: 'stay', keep: null }, tab: M }), 1, null, function (dt, i) { return i === 160 || i === 66; }]);
 
       var t = Store.todayDate();
       for (var i = 0; i < 200; i++) {
@@ -39,7 +41,7 @@
         var k = Store.key(dt), wd = dt.getDay();
         list.forEach(function (x) {
           var h = x[0];
-          if (h.freq.t === 'days' && h.freq.days.indexOf(wd) < 0) return;
+          if (x[3] && !x[3](dt, i)) return;                         // repeats: only on (or just after) their days
           if (i === 0 && rnd() < 0.5) return;                      // leave part of today open to try
           if (rnd() >= x[1]) return;
           E[h.id + '|' + k] = { v: x[2] ? x[2]() : 1, s: 0, u: now };

@@ -288,3 +288,21 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 .srr { grid-template-columns:minmax(70px,34%) 1fr auto; } .srr .mvl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
 .srr b { display:flex; align-items:baseline; gap:6px; justify-content:flex-end; min-width:74px; } .srr b em { font-style:normal; font-weight:500; font-size:11.5px; color:var(--muted); }
 .c.off.ok, .c.off.part { opacity:1; }
+/* v5.5 tab strip above the bottom bar, swipe area, Starred "Show groups" switch, repeats */
+.bstrip { flex:none; padding:6px 10px 2px; border-top:1px solid var(--line); background:var(--head); }
+.bstrip .chips { padding:0; } .bstrip .tchip { min-height:32px; font-size:13.5px; } .bstrip + .rib { border-top:0; }
+.swp { position:sticky; left:0; width:100%; touch-action:pan-y; }
+.empty { touch-action:pan-y; }
+.vbar { display:flex; align-items:center; padding:0 12px 4px 16px; flex:none; font-size:13px; font-weight:600; color:var(--pri); } .vbar span { flex:1; }
+.flip { display:flex; align-items:center; gap:8px; border:0; background:none; color:var(--muted); font:inherit; font-size:12.5px; cursor:pointer; padding:4px 0; }
+.tgl { width:30px; height:18px; border-radius:9px; background:var(--line); position:relative; flex:none; }
+.tgl::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--muted); transition:left .15s; }
+.tgl.on { background:var(--pri); } .tgl.on::after { left:14px; background:var(--pri-ink); }
+.due { display:inline; color:var(--bad); font-weight:600; font-size:11.5px; margin-left:5px; white-space:nowrap; }
+.c.miss .xx { stroke:var(--bad); opacity:.9; }
+.repl { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px; } .repl input { width:64px; flex:none; } .repl .seg { flex:1; margin:0; }
+.lockf { opacity:.55; }
+.tiles.t3 { grid-template-columns:repeat(3,1fr); }
+.mi.muted[disabled] { color:var(--muted); cursor:default; text-align:left; }
+#app:has(.bstrip) ~ #toast { bottom:calc(122px + env(safe-area-inset-bottom)); }
+.mi > .i { width:18px; height:18px; vertical-align:-4px; margin-right:8px; }

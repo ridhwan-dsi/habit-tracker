@@ -40,14 +40,85 @@
     cloudOk: '<svg class="i" viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 00.6-8 6 6 0 00-11.6-1.4A4.6 4.6 0 007 18.5z"/><path d="M9.5 13.5l2 2 3.5-3.8"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
-  var VIEW_NAME = { all: 'Habits', star: 'Starred', arch: 'Archived', win: 'Outside time window' };
+  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', win: 'Outside time window', due: 'Overdue & missed' };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
-  function scheduled(h, dt) { return h.freq.t !== 'days' || !h.freq.days.length || h.freq.days.indexOf(dt.getDay()) >= 0; }
   function met(h, v) { return h.tt === 'max' ? v <= h.target : v >= h.target; }
+  /* ---- v5.5 Repeats (Google Tasks style) and "If not done". Occurrences come from a fixed schedule (every N days /
+     weeks on chosen weekdays / months on a date) or from the day it was last done (every N days after done).
+     If not done: 'drop' = missed when its day ends; 'stay' = stays due (red "due Nd") until done, its next turn, or keep days.
+     A tick on a later day completes the open occurrence as "done late". Legacy weekday habits = every 1 week. ---- */
+  function dn(dt) { return Math.round(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()) / 864e5); }
+  function fromDn(n) { var u = new Date(n * 864e5); return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), 12); }
+  function kDn(k) { var p = k.split('-'); return Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 864e5); }
+  function enfG(h) { var g = h.parent && S.habit(h.parent); return g && g.enf ? g : null; }   // group that enforces its schedule
+  function fq(h) {
+    var f = (enfG(h) || h).freq || { t: 'day' };
+    if (f.t === 'days') return f.days && f.days.length ? { t: 'rep', ev: 1, u: 'w', days: f.days, from: 'sch', a: '2000-01-01' } : { t: 'day' };
+    return f;
+  }
+  function missOf(h) { return (enfG(h) || h).miss || { t: 'drop' }; }
+  function isRep(h) { return fq(h).t === 'rep'; }
+  function wkN(n) { var ws = S.d.settings.weekStart || 0; return Math.floor((n + (4 - ws + 7) % 7) / 7); }
+  function onSched(f, n) {
+    var a = kDn(f.a || '2000-01-01'), ev = Math.max(1, f.ev || 1), dt = fromDn(n); if (n < a) return false;
+    if (f.u === 'd') return (n - a) % ev === 0;
+    if (f.u === 'w') { var ds = f.days && f.days.length ? f.days : [fromDn(a).getDay()]; return ds.indexOf(dt.getDay()) >= 0 && (wkN(n) - wkN(a)) % ev === 0; }
+    var ad = fromDn(a), mi = dt.getFullYear() * 12 + dt.getMonth() - (ad.getFullYear() * 12 + ad.getMonth());
+    if (mi % ev) return false;
+    var last = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate(); return dt.getDate() === Math.min(f.md || ad.getDate(), last);
+  }
+  function addIv(f, n) {
+    var ev = Math.max(1, f.ev || 1); if (f.u === 'd') return n + ev; if (f.u === 'w') return n + 7 * ev;
+    var d = fromDn(n), t = new Date(d.getFullYear(), d.getMonth() + ev, 1, 12), last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+    t.setDate(Math.min(d.getDate(), last)); return dn(t);
+  }
+  function doneOn(h, k) { if (isGroup(h)) return groupRes(h, k).ok; var v = S.val(h.id, k); return v != null && (h.type === 'yn' ? !!v : met(h, v)); }
+  var RC = null;   // repeat status per habit; cleared on every save and render
+  var _save = S.save; S.save = function () { RC = null; return _save.apply(S, arguments); };
+  function rep(h) {
+    if (!isRep(h)) return null; RC = RC || {}; if (RC[h.id]) return RC[h.id];
+    var f = fq(h), m = missOf(h), stay = m.t === 'stay' && h.kind !== 'bad', keep = stay && m.keep > 0 ? m.keep : 0;
+    var T = kDn(S.today()), a = kDn(f.a || '2000-01-01'), O = [], next = null;
+    var span = function (o) { return stay ? (keep ? o + keep + 1 : Infinity) : o + 1; };
+    var find = function (o, e) { for (var n = o; n < Math.min(e, T + 1); n++) if (doneOn(h, S.key(fromDn(n)))) return n; return -1; };
+    var put = function (o, e) { var d = find(o, e); O.push(d >= 0 ? { o: o, d: d } : e <= T ? { o: o, miss: 1 } : { o: o, open: 1 }); return d; };
+    if (f.from === 'done') {
+      var o = Math.max(a, T - 2000), g = 0;
+      while (o <= T && g++ < 2000) { var d = put(o, span(o)); if (O[O.length - 1].open) break; o = addIv(f, d >= 0 ? d : o); }
+      if (!O.length || !O[O.length - 1].open) next = o;
+    } else {
+      var oc = []; for (var n = Math.max(a, T - 800); n <= T; n++) if (onSched(f, n)) oc.push(n);
+      oc.forEach(function (o, i) { put(o, Math.min(span(o), i + 1 < oc.length ? oc[i + 1] : Infinity)); });
+      for (var q = T + 1; q < T + 800 && next == null; q++) if (onSched(f, q)) next = q;
+    }
+    var r = { occ: {}, ok: {}, late: {}, miss: {}, on: 0, lt: 0, ms: 0, next: next }, L = O[O.length - 1];
+    O.forEach(function (x) { r.occ[x.o] = 1; if (x.miss) { r.miss[x.o] = 1; r.ms++; } else if (x.d != null) { r.ok[x.o] = 1; if (x.d > x.o) { r.late[x.d] = x.o; r.lt++; } else r.on++; } });
+    r.open = !!(L && L.open); r.due = r.open ? T - L.o : -1;   // 0 = due today, n = n days overdue
+    r.show = r.open || !!(L && L.d === T);                    // on today's list: due, overdue, or done today
+    r.lastMiss = !!(L && L.miss);
+    return (RC[h.id] = r);
+  }
+  function scheduled(h, dt) { return isRep(h) ? !!rep(h).occ[dn(dt)] : true; }
+  function dayTxt(n) { var d = fromDn(n); return WD[d.getDay()] + ' ' + d.getDate() + ' ' + MON3[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''); }
+  function freqTxt(h) {
+    var f = fq(h), U = { d: ['day', 'days'], w: ['week', 'weeks'], m: ['month', 'months'] };
+    if (f.t === 'week') return f.n + '× a week'; if (f.t === 'month') return f.n + '× a month'; if (f.t !== 'rep') return 'Every day';
+    var ev = Math.max(1, f.ev || 1), u = U[f.u] || U.d, s = 'Every ' + (ev > 1 ? ev + ' ' + u[1] : u[0]), a = fromDn(kDn(f.a || '2000-01-01'));
+    if (f.from === 'done') s += ' after done';
+    else if (f.u === 'w') s += ' on ' + (f.days && f.days.length ? f.days : [a.getDay()]).map(function (d) { return WD[d]; }).join(', ');
+    else if (f.u === 'm') s += ' on day ' + (f.md || a.getDate());
+    var m = missOf(h); if (m.t === 'stay' && h.kind !== 'bad') s += ' · stays due' + (m.keep ? ' up to ' + m.keep + ' d' : '');
+    return s;
+  }
+  function dueTag(h) {
+    var r = rep(h); if (!r) return '';
+    return r.due > 0 ? '<small class="due">(due ' + r.due + 'd)</small>' : view() === 'due' && r.lastMiss ? '<small class="due">(missed)</small>' : '';
+  }
   function cellHtml(h, d) {
-    var v = S.val(h.id, d.k), cls = 'c' + (scheduled(h, d.dt) ? '' : ' off') + (d.k === S.today() ? ' tdy' : ''), inner;
+    var v = S.val(h.id, d.k), r = rep(h), tdy = d.k === S.today(), sch = scheduled(h, d.dt) || (tdy && r && r.open);
+    var cls = 'c' + (sch ? '' : ' off') + (tdy ? ' tdy' : '') + (r && r.miss[dn(d.dt)] ? ' miss' : ''), inner;
     if (S.skipped(h.id, d.k)) { cls += ' skp'; inner = ICON.skip; }
     else if (h.type === 'yn') {
       if (v) { cls += h.kind === 'bad' ? ' bad' : ' ok'; inner = ICON.tick; } else inner = ICON.cross;
@@ -129,12 +200,17 @@
   function winTxt(h) { var w = h.win || {}, f = w.from && edgeTxt(w.from), t = w.to && edgeTxt(w.to); return f && t ? f + '–' + t : f ? 'from ' + f : t ? 'until ' + t : ''; }
 
   /* ---- v4 Views: 'all', 'star', a tab id, 'arch' (archived), 'win' (hidden by time window) ---- */
-  function tabsMode() { return S.d.settings.tabsMode || 'ribbon'; }
+  function tabsMode() { var m = S.d.settings.tabsMode; return m === 'top' || m === 'off' ? m : 'bottom'; }   // tab strip at top, above the bottom bar, or one page
   function visTabs() { return S.tabs().filter(function (t) { return !t.hidden; }); }
   function view() {
     var v = S.d.ui.view || 'all';
     if (VIEW_NAME[v]) return v;
     var t = S.tab(v); return t && !t.hidden && tabsMode() !== 'off' ? v : 'all';
+  }
+  function tabOrder() { return ['all'].concat(visTabs().map(function (t) { return t.id; })); }
+  function toggleView(x) {   // Starred / Archived / Later / Overdue: tap again = back to the tab you came from
+    var v = view(); if (v === x) return setView(S.d.ui.prev && tabOrder().indexOf(S.d.ui.prev) >= 0 ? S.d.ui.prev : 'all');
+    if (tabOrder().indexOf(v) >= 0) S.d.ui.prev = v; setView(x);
   }
   function setView(v) { S.d.ui.view = v; S.saveUi(); var sc = document.getElementById('sc'); if (sc) sc.scrollTop = 0; App.render(true); }
   function topOf(h) { return h.parent && S.habit(h.parent) || h; }
@@ -145,9 +221,11 @@
     if (tb && tb.hidden) return false;
     if (v === 'arch') return true;
     if (f.hideArchived && (h.archived || (g && g.archived))) return false;
-    if (v !== 'win' && winOf(h)) return false;
-    if (v !== 'win' && f.skipDays && f.hideSkipped && !sel && skippedToday(h)) return false;
-    if (v !== 'win' && f.hideEntered && !sel && enteredToday(h) && !skippedToday(h)) return false;
+    if (v === 'win' || v === 'due') return true;
+    if (winOf(h)) return false;
+    if (f.hideNotDue !== false && !sel && isRep(h) && !rep(h).show) return false;   // v5.5: a repeat shows only when due (or overdue)
+    if (f.skipDays && f.hideSkipped && !sel && skippedToday(h)) return false;
+    if (f.hideEntered && !sel && enteredToday(h) && !skippedToday(h)) return false;
     return true;
   }
   // member: does it belong to this view (tab, starred, archived, outside its window)?
@@ -156,7 +234,8 @@
     if (v === 'arch') return !!(h.archived || (g && g.archived));
     if (v === 'win') return winOf(h) !== 0;
     if (v === 'star') return !!(h.star || (g && g.star));
-    if (v === 'all') return true;
+    if (v === 'due') { var r = rep(h); return !!r && (r.due > 0 || r.lastMiss); }
+    if (v === 'all') return tabsMode() === 'off' || !tabOf(h);   // Main = habits with no tab of their own
     var tb = tabOf(h); return !!tb && tb.id === v;
   }
   // Habits on screen, in order. A group shows when it belongs itself, or (as context) when one of its sub-habits does.
@@ -179,6 +258,7 @@
   var App = {
     render: function (resetScroll) {
       var sc = document.getElementById('sc'), keep = sc && !resetScroll ? { l: sc.scrollLeft, t: sc.scrollTop } : null;
+      RC = null;
       var days = S.days(NDAYS), all = S.habits(), list = shownList(), v = view(), mode = tabsMode(), f = S.d.settings;
       if (sel) Object.keys(sel).forEach(function (id) { if (!S.habit(id)) delete sel[id]; });
       var head = '<div class="drow"><div class="nm"></div>' + days.map(function (d, i) {
@@ -192,7 +272,7 @@
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span style="color:' + esc(h.color) + '">' + esc(h.name) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + '</span>' +
+          '<span style="color:' + esc(h.color) + '">' + esc(h.name) + dueTag(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -207,33 +287,35 @@
       if (mode === 'off' && (v === 'all' || v === 'star') && S.tabs().length) {
         // One page, a header per tab: habits with no tab first, then each tab's habits under its name.
         var by = function (id) { return tops.filter(function (h) { var t = S.tab(h.tab); return (t ? t.id : null) === id; }); };
-        rows = by(null).map(card).join('') + visTabs().map(function (t) {
+        rows = (by(null).length && visTabs().length ? '<div class="sech"><span>Main</span></div>' : '') + by(null).map(card).join('') + visTabs().map(function (t) {
           var hs = by(t.id); if (!hs.length) return '';
           return '<div class="sech"><span>' + esc(t.name) + '</span></div>' + hs.map(card).join('');
         }).join('');
       } else rows = tops.map(card).join('');
       var n = sel ? Object.keys(sel).length : 0, lit = f.hideEntered || !f.hideArchived;
-      var bar;
+      var bar, logo = '<button class="logo" data-act="home" aria-label="Main"><img src="icons/icon-192.png" alt=""></button>';
+      // v5.5 tab strip: Main first, full name on the open tab, short name on the others; side-scrolls
+      var chips = '<div class="chips" id="chips">' + [{ id: 'all', name: 'Main' }].concat(visTabs()).map(function (t) {
+          return '<button class="tchip' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '">' + esc(v === t.id ? t.name : t.short || t.name) + '</button>';
+        }).join('') + '</div>';   // new tabs: hold any tab → New tab
+      var gOn = f.starGroups !== false;
+      var vbar = v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
+        : mode === 'top' && VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '';
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
-      else if (mode === 'top') bar = '<header class="top tstrip">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<div class="chips" id="chips">' + visTabs().map(function (t) {
-          return '<button class="tchip' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '">' + esc(t.name) + '</button>';
-        }).join('') + '<button class="tchip add" data-act="newTab" aria-label="New tab">' + ICON.plus + (S.tabs().length ? '' : '<span>New tab</span>') + '</button></div>' +
-        syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' +
-        (VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '');
-      else bar = '<header class="top">' + '<button class="logo" data-act="home" aria-label="All habits"><img src="icons/icon-192.png" alt=""></button>' + '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
+      else if (mode === 'top') bar = '<header class="top tstrip">' + logo + chips + syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + vbar;
+      else bar = '<header class="top">' + logo + '<h1>' + esc(v === 'all' && mode === 'off' ? 'Habits' : VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
         '<button class="ib' + (lit ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
-        syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>';
-      var wc = winCount(), tabV = !VIEW_NAME[v];
+        syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + vbar;
+      var wc = winCount(), tabV = !VIEW_NAME[v] || v === 'all';
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
-      var ribbon = '<nav class="rib">' +
-        (v === 'star' ? rb('starToggle', ICON.list, 'All', false) : rb('starToggle', ICON.star, 'Starred', false)) +
-        (mode === 'ribbon' ? rb('tabsSheet', ICON.tabs, tabV ? S.tab(v).name : 'Tabs', tabV) : '') +
+      var ribbon = (mode === 'bottom' && !sel ? '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
+        rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
         (mode === 'top' ? rb('filter', ICON.filter, 'Filter', lit) + rb('add', ICON.plus, 'Add', false) : '') +
         rb('viewArch', ICON.archive, 'Archived', v === 'arch') +
         rb('viewWin', ICON.clock, 'Later', v === 'win', wc ? '<i class="bdg">' + wc + '</i>' : '') +
@@ -243,19 +325,22 @@
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
         arch: 'No archived habits.',
+        due: 'Nothing overdue or missed.',
         win: 'Nothing is waiting for its time window right now.'
       }[v];
+      var nd = f.hideNotDue !== false && !list.length ? all.filter(function (h) { return !h.parent && isRep(h) && member(h, v) && !rep(h).show && !(f.hideArchived && h.archived); }).length : 0;
       var demoBar = S.demo ? '<div class="demobar"><span>Demo data · your own habits are safe</span><button class="btn sm" data-act="demoOff">Exit demo</button></div>' : '';
       root.innerHTML = bar + demoBar +
-        (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div></div>'
+        (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div><div class="swp" id="swp"></div></div>'
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
-          : all.length ? '<div class="empty"><p>' + (f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p><button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
+          : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (nd ? '<p class="small">' + nd + ' repeat' + (nd > 1 ? 's' : '') + ' not due today — Filter shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       root.classList.toggle('sublines', f.subLines !== false);
       root.classList.toggle('noscr', f.hScroll === false);
       root.classList.toggle('nofrz', f.freezeToday === false);
       sizeCols();
       sc = document.getElementById('sc');
+      var swp = document.getElementById('swp'); if (swp) swp.style.minHeight = Math.max(96, sc.clientHeight - document.getElementById('grid').offsetHeight - 24) + 'px';   // blank area: swipe to change tab
       if (sc && keep) { sc.scrollLeft = f.hScroll === false ? 0 : keep.l; sc.scrollTop = keep.t; }
       if (sc) { var edge = function () { sc.classList.toggle('hs', sc.scrollLeft > 2); }; sc.addEventListener('scroll', edge, { passive: true }); edge(); }
       var on = document.querySelector('.tchip.on'); if (on && resetScroll) on.scrollIntoView({ inline: 'center', block: 'nearest' });
@@ -265,7 +350,7 @@
       var h = S.habit(hid); if (!h) return App.render();
       var g = h.parent && S.habit(h.parent);
       var ids = {}; shownList().forEach(function (x) { ids[x.id] = 1; });
-      if (!ids[h.id] || (g && !ids[g.id])) return App.render();   // Hide entered: row leaves once today is done
+      if (!ids[h.id] || (g && !ids[g.id]) || isRep(h) || (g && isRep(g))) return App.render();   // a repeat's due count may change   // Hide entered: row leaves once today is done
       S.days(NDAYS).forEach(function (d) {
         var el = root.querySelector('.c[data-h="' + hid + '"][data-k="' + d.k + '"]');
         if (el) el.outerHTML = cellHtml(h, d);
@@ -425,6 +510,18 @@
   root.addEventListener('touchmove', function (e) { if (drag || (lp && lp.fired)) e.preventDefault(); }, { passive: false });
   root.addEventListener('contextmenu', function (e) { if (e.target.closest('.c, .nm')) e.preventDefault(); });
 
+  /* ---- v5.5 Swipe left/right on the blank area below the list (or an empty page) = next / previous tab.
+     touch-action:pan-y there keeps the browser from scrolling the dates sideways. ---- */
+  var sw = null;
+  root.addEventListener('pointerdown', function (e) { sw = e.target.closest('.swp, .empty') && !sel ? { x: e.clientX, y: e.clientY } : null; });
+  root.addEventListener('pointerup', function (e) {
+    if (!sw) return; var dx = e.clientX - sw.x, dy = e.clientY - sw.y; sw = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || tabsMode() === 'off') return;
+    var o = tabOrder(), i = o.indexOf(view()), j = i + (dx < 0 ? 1 : -1);
+    if (i >= 0 && j >= 0 && j < o.length) { setView(o[j]); }
+  });
+  root.addEventListener('pointercancel', function () { sw = null; });
+
   /* ---- Drag to reorder: the row follows the finger; neighbours swap as it passes their middle ---- */
   // A sub-habit moves among its group's sub-habits; a top-level habit moves with its whole group card.
   function dragStart(p, e) {
@@ -517,7 +614,7 @@
     var t = S.todayDate(), D = t.getDate(), tk = S.today(), M3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     var lm = new Date(t.getFullYear(), t.getMonth() - 1, 1), lLen = new Date(lm.getFullYear(), lm.getMonth() + 1, 0).getDate();
     var calc = function (x, y, m, upTo) {
-      var st = startOf(x), per = x.freq && (x.freq.t === 'week' || x.freq.t === 'month'), bad = x.kind === 'bad', n = 0, ok = 0;
+      var st = startOf(x), per = fq(x).t === 'week' || fq(x).t === 'month', bad = x.kind === 'bad', n = 0, ok = 0;
       for (var d = 1; d <= upTo; d++) {
         var dt = new Date(y, m, d, 12), k = S.key(dt); if (dt < st || k > tk) continue;
         var v = S.val(x.id, k), did = v != null && (x.type === 'yn' ? !!v : (bad ? !met(x, v) : met(x, v))), good = bad ? !did : did;
@@ -528,31 +625,39 @@
       return per ? (n ? ok : null) : (n ? Math.round(ok / n * 100) : null);
     };
     var rows = L.map(function (x) {
-      var per = x.freq && (x.freq.t === 'week' || x.freq.t === 'month');
+      var xf = fq(x), per = xf.t === 'week' || xf.t === 'month';
       var a = calc(x, t.getFullYear(), t.getMonth(), D), b = calc(x, lm.getFullYear(), lm.getMonth(), Math.min(D, lLen));
       var txt = function (v) { return v == null ? '–' : per ? v + '×' : v + '%'; };
-      var w = a == null ? 0 : per ? Math.min(100, a / Math.max(1, (x.freq.n || 1) * (x.freq.t === 'week' ? Math.ceil(D / 7) : 1)) * 100) : a;
+      var w = a == null ? 0 : per ? Math.min(100, a / Math.max(1, (xf.n || 1) * (xf.t === 'week' ? Math.ceil(D / 7) : 1)) * 100) : a;
       var cls = a == null || b == null || a === b ? 'same' : (a > b ? 'cur' : 'worse');
       return '<div class="mvr srr"><span class="mvl">' + esc(x.name) + '</span><div class="mvt"><div class="mvb ' + cls + '" style="width:' + Math.max(2, w) + '%"></div></div><b>' + txt(a) + '<em>' + txt(b) + '</em></b></div>';
     }).join('');
     return '<section class="stc"><h4>Each sub-habit · ' + M3[t.getMonth()] + ' 1–' + D + '</h4>' + rows +
       '<p class="small muted">Small number = same days last month (' + M3[lm.getMonth()] + ' 1–' + Math.min(D, lLen) + '). Green = better than last month, red = worse.</p></section>';
   }
+  function repCard(r) {
+    return '<section class="stc"><h4>Each time it was due</h4><div class="tiles t3">' + [['On time', r.on], ['Done late', r.lt], ['Missed', r.ms]].map(function (x) {
+        return '<div class="tile"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>'; }).join('') + '</div>' +
+      '<p class="small muted" style="margin:8px 0 0">' + (r.open ? (r.due > 0 ? 'Due now — ' + r.due + ' day' + (r.due > 1 ? 's' : '') + ' overdue. ' : 'Due today. ') : r.next != null ? 'Next due ' + dayTxt(r.next) + '. ' : '') +
+      'A tick after the due day counts as done late.</p></section>';
+  }
   function openStats(id, keepMonth) {
+    RC = null;
     var h = S.habit(id); if (!h) return;
     if (stId !== id || !keepMonth) stMon = 0; stId = id;
     var grp = isGroup(h), bad = !grp && h.kind === 'bad', numT = grp ? h.agg && h.agg.t === 'sum' : h.type === 'num';
     var res = grp ? function (k) { var r = groupRes(h, k); return { v: h.agg && h.agg.t === 'sum' ? r.sum : r.done, ok: r.ok, s: r.total === 0 && liveSubs(h.id).length > 0 }; }
       : function (k) { var v = S.val(h.id, k), sk = S.skipped(h.id, k), did = v != null && (h.type === 'yn' ? !!v : (bad ? !met(h, v) : met(h, v)));
           return { v: v, s: sk, ok: bad ? !did : did }; };
-    var f = h.freq || {}, fq = f.t === 'week' ? f.n + '× a week' : f.t === 'month' ? f.n + '× a month' : f.t === 'days' && f.days.length ? f.days.map(function (d) { return WD[d]; }).join(', ') : 'Every day';
+    var rr = rep(h);
+    if (rr && !bad) { var r0 = res; res = function (k) { var x = r0(k), n = kDn(k); if (rr.late[n] != null) x.ok = false; if (rr.ok[n]) x.ok = true; return x; }; }   // a late tick counts on its due day
     var sub = grp ? (h.agg && h.agg.t === 'sum' ? 'Group · sum' + (h.target ? ', target ' + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') : '') : 'Group · done when ' + Math.min(h.agg.n || 1, liveSubs(h.id).length) + ' of ' + liveSubs(h.id).length + ' are done')
-      : (bad ? 'Bad habit · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + fq;
+      : (bad ? 'Bad habit · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + freqTxt(h);
     var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>' + esc(h.name) + '</h2>' +
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: grp ? subRates(h) : '' }) + '</div>';
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
     if (sheetOpen === 'stats' || sheetOpen === 'edit') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
@@ -653,6 +758,8 @@
     draft._new = !h; draft._ttSet = !!h;
     if (!h) { var v = view(); if (S.tab(v)) draft.tab = v; if (v === 'star') draft.star = true; }
     if (!draft.win) draft.win = { from: '', to: '' };
+    if (!draft.miss) draft.miss = { t: 'drop', keep: null };
+    if (draft.freq.t === 'days') draft.freq = draft.freq.days && draft.freq.days.length ? { t: 'rep', n: 1, ev: 1, u: 'w', days: draft.freq.days, from: 'sch', a: S.key(startOf(h)), md: 1 } : { t: 'day', n: 1, days: [] };
     draft._from = sheetOpen === 'stats' ? 'stats' : null;
     drawEdit();
   }
@@ -706,15 +813,11 @@
         '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min, km" autocomplete="off"></label>' +
         '<label class="fl">Target<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>' +
         '<div class="fl">Target type' + seg('tt', h.tt, [['min', 'At least'], ['max', 'At most']]) + '</div>' : '') +
-      '<div class="fl">Frequency' + seg('freq', f.t, [['day', 'Every day'], ['week', 'Per week'], ['month', 'Per month'], ['days', 'Weekdays']]) +
-      (f.t === 'week' || f.t === 'month' ? '<label class="inl"><input id="fN" inputmode="numeric" value="' + (f.n || 1) + '"> times per ' + f.t + '</label>' : '') +
-      (f.t === 'days' ? '<div class="wd">' + wdOrder.map(function (i) {
-        return '<button class="' + (f.days.indexOf(i) >= 0 ? 'on' : '') + '" data-act="ef" data-f="wd" data-v="' + i + '">' + WD[i].slice(0, 2) + '</button>';
-      }).join('') + '</div>' : '') + '</div>' +
+      freqFields(h, grp) +
       (!grp && h.type === 'num' ? '<label class="fl">Default value<input id="fStep" inputmode="decimal" value="' + (h.step ? num(h.step) : '') + '" placeholder="1" autocomplete="off">' +
         '<span class="small muted">The number box opens with this filled in, so OK saves it in one tap. + and − change by this much.</span></label>' : '') +
       (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
-        [{ id: '', name: 'No tab' }].concat(S.tabs()).map(function (t) {
+        [{ id: '', name: 'Main' }].concat(S.tabs()).map(function (t) {
           return '<button class="tchip' + ((h.tab || '') === t.id ? ' on' : '') + '" data-act="ef" data-f="tab" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</button>';
         }).join('') + '</div></div>' : '') +
       '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two">' + edgeField('From', 'Show from', h.win.from) + edgeField('To', 'Hide after', h.win.to) + '</div>' +
@@ -725,6 +828,34 @@
       '</div>';
     if (sheetOpen === 'edit') { sheet.innerHTML = html; } else showSheet('edit', html, 'page');
   }
+  /* v5.5 Repeat section (Google Tasks "Repeats": only the fields that matter) + If not done + group Enforce.
+     A sub-habit of an enforcing group shows the group's settings greyed out. */
+  function freqFields(h, grp) {
+    var G = enfG(h), dis = !!G, f = dis ? fq(h) : h.freq, D = dis ? ' disabled' : '', ws = S.d.settings.weekStart || 0;
+    var wdOrder = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return (i + ws) % 7; });
+    var o = '<div class="fl' + (dis ? ' lockf' : '') + '">Repeat' + (dis ? '<span class="small muted">Set by the group ' + esc(G.name) + '</span>' : '') +
+      seg('freq', f.t, [['day', 'Every day'], ['week', 'Per week'], ['month', 'Per month'], ['rep', 'Repeats']], dis);
+    if (f.t === 'week' || f.t === 'month') o += '<label class="inl"><input id="fN" inputmode="numeric" value="' + (f.n || 1) + '"' + D + '> times per ' + f.t + '</label>';
+    if (f.t === 'rep') {
+      var done = f.from === 'done';
+      o += '<div class="repl">Every <input id="fEv" inputmode="numeric" value="' + (f.ev || 1) + '"' + D + '>' + seg('ru', f.u || 'w', [['d', 'Days'], ['w', 'Weeks'], ['m', 'Months']], dis) + '</div>' +
+        '<div class="fl">Count from' + seg('rfrom', done ? 'done' : 'sch', [['sch', 'The schedule'], ['done', 'Day it’s done']], dis) +
+        '<span class="small muted">' + (done ? 'The next one is due this long after you actually do it (e.g. car oil every 90 days).' : 'Fixed dates, whenever you did the last one.') + '</span></div>' +
+        (!done && f.u === 'w' ? '<div class="wd">' + wdOrder.map(function (i) {
+          return '<button class="' + ((f.days || []).indexOf(i) >= 0 ? 'on' : '') + '" data-act="ef" data-f="wd" data-v="' + i + '"' + D + '>' + WD[i].slice(0, 2) + '</button>'; }).join('') + '</div>' : '') +
+        (!done && f.u === 'm' ? '<label class="inl">On day <input id="fMd" inputmode="numeric" value="' + (f.md || 1) + '"' + D + '> of the month <span class="small muted">(31 = last day)</span></label>' : '') +
+        '<label class="fl">' + (done ? 'First due' : 'Starts') + '<input id="fRa" type="date" value="' + esc(f.a || S.today()) + '"' + D + '></label>';
+    }
+    o += '</div>';
+    if (f.t === 'rep' && h.kind !== 'bad') {
+      var m = (dis ? G.miss : h.miss) || { t: 'drop' };
+      o += '<div class="fl' + (dis ? ' lockf' : '') + '">If not done' + seg('miss', m.t, [['drop', 'Disappear'], ['stay', 'Stay as due']], dis) +
+        '<span class="small muted">' + (m.t === 'stay' ? 'Stays on the list with a red “due” count until done or its next turn comes. A later tick counts as done late.' : 'Missed once its day is over (e.g. Friday Surah Al-Kahf).') + '</span>' +
+        (m.t === 'stay' ? '<label class="inl">Keep for at most <input id="fKeep" inputmode="numeric" value="' + (m.keep || '') + '" placeholder="–"' + D + '> days <span class="small muted">(blank = until done)</span></label>' : '') + '</div>';
+    }
+    if (grp) o += '<button class="mi tg flat" data-act="ef" data-f="enf"><span>Enforce on sub-habits<br><span class="small muted">Sub-habits follow this group’s repeat and if-not-done settings (shown greyed in their Edit).</span></span><span class="box' + (h.enf ? ' on' : '') + '">' + (h.enf ? ICON.check : '') + '</span></button>';
+    return o;
+  }
   // v6: what switching type does to past days (only for a saved habit with history)
   function typeNote(h) {
     var o = !h._new && S.habit(h.id); if (!o || o.type === h.type) return '';
@@ -734,11 +865,15 @@
       '<span class="small muted">Ticks that were numbers before go back to those numbers.</span>';
   }
   function readInputs() {   // keep typed values before a redraw
-    var g = function (id) { var el = document.getElementById(id); return el ? el.value : null; };
+    var g = function (id) { var el = document.getElementById(id); return el && !el.disabled ? el.value : null; };   // greyed (enforced) fields stay the group's
     if (g('fName') != null) draft.name = g('fName');
     if (g('fUnit') != null) draft.unit = g('fUnit').trim();
     if (g('fTarget') != null) { var t = parseFloat(g('fTarget').replace(',', '.')); draft.target = isFinite(t) ? t : draft.target; }
     if (g('fN') != null) { var n = parseInt(g('fN'), 10); draft.freq.n = n > 0 ? n : 1; }
+    if (g('fEv') != null) { var ev = parseInt(g('fEv'), 10); draft.freq.ev = ev > 0 ? Math.min(ev, 999) : 1; }
+    if (g('fMd') != null) { var md = parseInt(g('fMd'), 10); draft.freq.md = md > 0 ? Math.min(md, 31) : 1; }
+    if (g('fRa') != null && g('fRa')) draft.freq.a = g('fRa');
+    if (g('fKeep') != null) { var kp = parseInt(g('fKeep'), 10); draft.miss = draft.miss || { t: 'stay' }; draft.miss.keep = kp > 0 ? kp : null; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
@@ -756,7 +891,7 @@
   function openMenu() {
     var g = S.habits().some(isGroup);
     showSheet('menu', 
-      (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Hidden tabs</button>' : '') +
+      (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Archived tabs</button>' : '') +
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {
@@ -767,11 +902,11 @@
     showSheet('settings',
       '<h3>Settings</h3>' +
       '<h4>Theme</h4><div class="row">' + [['dark', 'Dark'], ['light', 'Light']].map(function (t) { return '<button class="btn sm' + (s.theme === t[0] ? ' pri' : '') + '" data-act="theme" data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
-      '<h4>Tabs layout</h4><div class="seg">' + [['ribbon', 'Bottom bar'], ['top', 'Tabs on top'], ['off', 'One page']].map(function (m) {
+      '<h4>Tabs layout</h4><div class="seg">' + [['top', 'Strip on top'], ['bottom', 'Strip at bottom'], ['off', 'One page']].map(function (m) {
         return '<button class="' + (tabsMode() === m[0] ? 'on' : '') + '" data-act="tabsMode" data-v="' + m[0] + '">' + m[1] + '</button>';
       }).join('') + '</div><p class="small muted" style="margin-top:6px">' + {
-        ribbon: 'Tabs open from the Tabs button on the bottom bar.',
-        top: 'Your tabs sit in a row across the top; Filter and Add move to the bottom bar.',
+        bottom: 'Main and your tabs sit in a strip just above the bottom bar. Hold any tab to add a new one; swipe the blank area below the list to change tab.',
+        top: 'Main and your tabs sit in a strip across the top; Filter and Add move to the bottom bar. Hold any tab to add a new one; swipe the blank area below the list to change tab.',
         off: 'No tabs: one page with each tab’s name as a header above its habits.' }[tabsMode()] + '</p>' +
       '<h4>Marking</h4>' + tg('shortPress', 'Toggle with short press', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
       tg('skipDays', 'Skip days', 'Yes/no: hold again after a tick to mark a skip (neither done nor missed). Measurable: Skip button in the number box.') +
@@ -838,59 +973,66 @@
   }
 
   /* ---- v4 Tabs: sheet (ribbon layout), new/rename, hold a tab for its actions ---- */
+  function tabAll(id) { return S.habits().filter(function (h) { return !h.parent && h.tab === id; }).length; }   // incl. archived
   function tabCount(id) { return S.habits().filter(function (h) { return !h.parent && h.tab === id && !h.archived; }).length; }
   function openTabsSheet() {
     var v = view(), hid = S.tabs().filter(function (t) { return t.hidden; });
     showSheet('tabs', '<h3>Tabs</h3>' +
-      '<button class="mi trow' + (v === 'all' ? ' on' : '') + '" data-act="goTab" data-tab="all"><span>All habits</span></button>' +
+      '<button class="mi trow' + (v === 'all' ? ' on' : '') + '" data-act="goTab" data-tab="all"><span>Main</span></button>' +
       visTabs().map(function (t) {
         return '<button class="mi trow' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + '</span><small>' + tabCount(t.id) + '</small></button>';
       }).join('') +
       '<button class="mi trow add" data-act="newTab">' + ICON.plus + '<span>New tab</span></button>' +
-      (hid.length ? '<button class="mi trow muted" data-act="hiddenTabs"><span>Hidden tabs</span><small>' + hid.length + '</small></button>' : '') +
-      '<p class="small muted hint">Hold a tab to rename, hide, move or delete it.</p>');
+      (hid.length ? '<button class="mi trow muted" data-act="hiddenTabs"><span>Archived tabs</span><small>' + hid.length + '</small></button>' : '') +
+      '<p class="small muted hint">Hold a tab to edit, archive, move or delete it.</p>');
   }
   function openHiddenTabs() {
     var hid = S.tabs().filter(function (t) { return t.hidden; });
-    showSheet('hidden', '<h3>Hidden tabs</h3><p class="small muted">Hidden tabs and their habits stay out of every list. Tap or hold one to show it again.</p>' +
+    showSheet('hidden', '<h3>Archived tabs</h3><p class="small muted">Archived tabs and their habits stay out of every list. Tap or hold one to bring it back.</p>' +
       (hid.length ? hid.map(function (t) { return '<button class="mi trow" data-act="tabActs" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + '</span><small>' + tabCount(t.id) + '</small></button>'; }).join('')
         : '<p class="muted">None.</p>') + '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
   }
-  function askTabName(t) {
-    showSheet('tabname', '<h3>' + (t ? 'Rename tab' : 'New tab') + '</h3><input id="tabIn" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Daily, Weekly, Monthly" maxlength="30" enterkeyhint="done" autocomplete="off">' +
+  function askTabName(t) {   // v5.5: name + optional short name (shown on the strip when the tab isn't open)
+    showSheet('tabname', '<h3>' + (t ? 'Edit tab' : 'New tab') + '</h3><input id="tabIn" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Daily, Weekly, Monthly" maxlength="30" enterkeyhint="next" autocomplete="off">' +
+      '<label class="fl" style="margin-top:10px">Short name (optional)<input id="tabSh" value="' + esc(t && t.short || '') + '" placeholder="e.g. Wk" maxlength="10" enterkeyhint="done" autocomplete="off"></label>' +
+      '<p class="small muted" style="margin-top:6px">The full name shows on the open tab, the short name on the others.</p>' +
       '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="tabSave">' + (t ? 'Save' : 'Create') + '</button></div>', 'attop');
-    var inp = document.getElementById('tabIn'); inp.focus(); inp.select();
+    var inp = document.getElementById('tabIn'), sh = document.getElementById('tabSh'); inp.focus(); inp.select();
     App._tab = function () {
-      var name = inp.value.trim(); if (!name) return App.toast('Give the tab a name');
+      var name = inp.value.trim(), short = sh.value.trim(); if (!name) return App.toast('Give the tab a name');
       closeSheet(function () {
-        if (t) { t.name = name; S.putTab(t); App.render(); }
-        else { var nt = S.putTab({ name: name }); if (tabsMode() === 'off') App.render(); else setView(nt.id); App.toast('Tab “' + name + '” created'); }
+        if (t) { t.name = name; t.short = short; S.putTab(t); App.render(); }
+        else { var nt = S.putTab({ name: name, short: short }); if (tabsMode() === 'off') App.render(); else setView(nt.id); App.toast('Tab “' + name + '” created'); }
       });
     };
-    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') App._tab(); });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sh.focus(); });
+    sh.addEventListener('keydown', function (e) { if (e.key === 'Enter') App._tab(); });
   }
   function openTabActs(id) {
+    var nt = '<button class="mi" data-act="newTab">' + ICON.plus + ' New tab</button>';
+    if (id === 'all') return showSheet('tabacts', '<h3>Main</h3>' + nt + '<p class="small muted hint">Main is always first and can’t be renamed, archived or deleted.</p>');
     var t = S.tab(id); if (!t) return;
     var vis = visTabs(), i = vis.findIndex(function (x) { return x.id === id; });
-    var lr = tabsMode() === 'top' ? ['Move left', 'Move right'] : ['Move up', 'Move down'];
-    showSheet('tabacts', '<h3>' + esc(t.name) + '</h3>' +
-      (t.hidden ? '<button class="mi" data-act="tabHide" data-tab="' + id + '">Show this tab again</button>' :
-        '<button class="mi" data-act="tabHide" data-tab="' + id + '">Hide tab and its habits</button>') +
-      '<button class="mi" data-act="tabRename" data-tab="' + id + '">Rename</button>' +
+    var lr = tabsMode() === 'off' ? ['Move up', 'Move down'] : ['Move left', 'Move right'], n = tabAll(id);
+    showSheet('tabacts', '<h3>' + esc(t.name) + '</h3>' + nt +
+      '<button class="mi" data-act="tabRename" data-tab="' + id + '">Edit name &amp; short name</button>' +
+      (t.hidden ? '<button class="mi" data-act="tabHide" data-tab="' + id + '">Unarchive tab</button>' :
+        '<button class="mi" data-act="tabHide" data-tab="' + id + '">Archive tab and its habits</button>') +
       (!t.hidden && i > 0 ? '<button class="mi" data-act="tabMove" data-tab="' + id + '" data-d="-1">' + lr[0] + '</button>' : '') +
       (!t.hidden && i < vis.length - 1 ? '<button class="mi" data-act="tabMove" data-tab="' + id + '" data-d="1">' + lr[1] + '</button>' : '') +
-      '<button class="mi danger-t" data-act="tabDel" data-tab="' + id + '">Delete tab</button>');
+      (n ? '<button class="mi muted" disabled>Delete tab<br><span class="small">Only an empty tab can be deleted — it still has ' + n + ' habit' + (n > 1 ? 's' : '') + ' (archived ones count). Move or delete them first.</span></button>'
+        : '<button class="mi danger-t" data-act="tabDel" data-tab="' + id + '">Delete tab</button>'));
   }
   function openMoveToTab() {
     showSheet('movetab', '<h3>Move to tab</h3>' +
-      '<button class="mi trow" data-act="moveTo" data-tab=""><span>No tab</span></button>' +
+      '<button class="mi trow" data-act="moveTo" data-tab=""><span>Main</span></button>' +
       S.tabs().map(function (t) { return '<button class="mi trow" data-act="moveTo" data-tab="' + t.id + '"><span>' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</span></button>'; }).join('') +
       '<button class="mi trow add" data-act="moveToNew">' + ICON.plus + '<span>New tab…</span></button>');
   }
   // Hold a tab chip / tab row (450 ms) → its actions. A short tap still opens the tab.
   var th = null, thQuiet = false;
   document.addEventListener('pointerdown', function (e) {
-    var el = e.target.closest('.tchip[data-tab], [data-hold]'); if (!el || e.button > 0) return;
+    var el = e.target.closest('.tchip[data-tab], [data-hold]'); if (!el || e.button > 0) return;   // Main: only New tab
     thQuiet = false;
     th = { x: e.clientX, y: e.clientY, t: setTimeout(function () { th = null; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20); var id = el.dataset.hold || el.dataset.tab; if (sheetOpen) closeSheet(function () { openTabActs(id); }); else openTabActs(id); }, HOLD) };
   });
@@ -982,13 +1124,15 @@
       });
     },
     home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
-    starToggle: function () { setView(view() === 'star' ? 'all' : 'star'); },
-    viewArch: function () { setView(view() === 'arch' ? 'all' : 'arch'); },
-    viewWin: function () { setView(view() === 'win' ? 'all' : 'win'); },
+    starToggle: function () { toggleView('star'); },
+    viewArch: function () { toggleView('arch'); },
+    viewWin: function () { toggleView('win'); },
+    viewDue: function () { closeSheet(function () { toggleView('due'); }); },
+    flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
     goTab: function (el) {
       if (thQuiet) { thQuiet = false; return; }
-      var id = el.dataset.tab, go = function () { setView(id === view() && id !== 'all' && tabsMode() === 'top' ? 'all' : id); };
+      var id = el.dataset.tab, go = function () { setView(id); };
       if (sheetOpen) closeSheet(go); else go();
     },
     newTab: function () { if (sheetOpen) closeSheet(function () { askTabName(null); }); else askTabName(null); },
@@ -998,13 +1142,13 @@
     tabRename: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { askTabName(t); }); },
     tabHide: function (el) {
       var t = S.tab(el.dataset.tab), hide = !t.hidden;
-      closeSheet(function () { t.hidden = hide; S.putTab(t); App.render(); App.toast(hide ? 'Tab hidden — find it under Hidden tabs' : 'Tab “' + t.name + '” is back'); });
+      closeSheet(function () { t.hidden = hide; S.putTab(t); App.render(); App.toast(hide ? 'Tab archived — find it in ⋮ → Archived tabs' : 'Tab “' + t.name + '” is back'); });
     },
     tabMove: function (el) { var id = el.dataset.tab, d = +el.dataset.d; closeSheet(function () { S.moveTab(id, d); App.render(); openTabActs(id); }); },
     tabDel: function (el) {
-      var t = S.tab(el.dataset.tab), n = tabCount(t.id);
+      var t = S.tab(el.dataset.tab); if (tabAll(t.id)) return App.toast('Only an empty tab can be deleted');
       closeSheet(function () {
-        confirmBox('Delete tab “' + t.name + '”?' + (n ? ' Its ' + n + ' habit' + (n > 1 ? 's stay' : ' stays') + ', with no tab (in All).' : ''), 'Delete', function () { S.delTab(t.id); App.render(); App.toast('Tab deleted'); });
+        confirmBox('Delete tab “' + t.name + '”?', 'Delete', function () { S.delTab(t.id); App.render(); App.toast('Tab deleted'); });
       });
     },
     selEdit: function () { var id = Object.keys(sel)[0]; selEnd(function () { openEdit(id); }); },
@@ -1033,9 +1177,12 @@
       var f = S.d.settings, row = function (k, label) {
         return '<button class="mi tg" data-act="fToggle" data-k="' + k + '"><span>' + label + '</span><span class="box' + (f[k] ? ' on' : '') + '">' + (f[k] ? ICON.check : '') + '</span></button>';
       };
-      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered') + (f.skipDays ? row('hideSkipped', 'Hide skip days') : ''), 'menu');
+      var nd = f.hideNotDue !== false, due = S.habits().filter(function (h) { return member(h, 'due'); }).length;
+      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered') + (f.skipDays ? row('hideSkipped', 'Hide skip days') : '') +
+        '<button class="mi tg" data-act="fToggle" data-k="hideNotDue"><span>Hide repeats not due today</span><span class="box' + (nd ? ' on' : '') + '">' + (nd ? ICON.check : '') + '</span></button>' +
+        '<button class="mi trow" data-act="viewDue"><span>Overdue &amp; missed</span><small>' + (due || '') + '</small></button>', 'menu');
     },
-    fToggle: function (el) { var k = el.dataset.k; S.d.settings[k] = !S.d.settings[k]; S.saveSettings(); App.render(); actions.filter(); },
+    fToggle: function (el) { var k = el.dataset.k; S.d.settings[k] = k === 'hideNotDue' ? S.d.settings[k] === false : !S.d.settings[k]; S.saveSettings(); App.render(); actions.filter(); },
     ef: function (el) {   // edit-form field change
       readInputs();
       var f = el.dataset.f, v = el.dataset.v, h = draft;
@@ -1044,7 +1191,14 @@
       else if (f === 'kind') { h.kind = v; if (!h._ttSet) h.tt = v === 'bad' ? 'max' : 'min'; }
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
-      else if (f === 'freq') { h.freq.t = v; if (v === 'days' && !h.freq.days.length) h.freq.days = [0, 1, 2, 3, 4, 5, 6]; }
+      else if (f === 'freq') {
+        h.freq.t = v;
+        if (v === 'rep') { var td = S.todayDate(), q = h.freq; q.ev = q.ev || 1; q.u = q.u || 'w'; q.from = q.from || 'sch'; q.a = q.a || S.today(); q.md = q.md || td.getDate(); if (!q.days || !q.days.length) q.days = [td.getDay()]; }
+      }
+      else if (f === 'ru') h.freq.u = v;
+      else if (f === 'rfrom') h.freq.from = v;
+      else if (f === 'miss') { h.miss = h.miss || { keep: null }; h.miss.t = v; }
+      else if (f === 'enf') h.enf = !h.enf;
       else if (f === 'tab') h.tab = v || null;
       else if (f === 'fold0') h.fold0 = v === '1';
       else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
@@ -1058,13 +1212,18 @@
       h.name = (h.name || '').trim();
       if (!h.name) { App.toast('Give the habit a name'); var n = document.getElementById('fName'); if (n) n.focus(); return; }
       if (h.type === 'num' && !(h.target >= 0)) return App.toast('Enter a target number');
-      if (h.freq.t === 'days' && !h.freq.days.length) return App.toast('Pick at least one weekday');
+      if (h.freq.t === 'rep' && h.freq.u === 'w' && h.freq.from !== 'done' && !(h.freq.days || []).length) return App.toast('Pick at least one weekday');
       var o = !h._new && S.habit(h.id), sw = o && o.type !== h.type && S.countEntries(h.id);
       if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
       var tick = h._tick;
       var back = h._from === 'stats';
       delete h._new; delete h._ttSet; delete h._tick; delete h._from;
-      var done = function () { if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render(); if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted'); };
+      var done = function () {
+        if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render();
+        var rr = rep(h);
+        if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
+        else if (rr && !rr.show && S.d.settings.hideNotDue !== false) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
+      };
       if (back) { done(); openStats(h.id, true); } else closeSheet(done);
     },
     delHabit: function () {
