@@ -18,7 +18,7 @@
     ['Dammam', 26.4207, 50.0888, 'uaq'], ['Doha', 25.2854, 51.531, 'qatar'], ['Dubai', 25.2048, 55.2708, 'gulf'], ['Abu Dhabi', 24.4539, 54.3773, 'gulf'],
     ['Istanbul', 41.0082, 28.9784, 'mwl'], ['London', 51.5072, -0.1276, 'mwl']
   ];
-  var NAMES = { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
+  var NAMES = { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha', midnight: 'Midnight (half the night)' };
   var rad = Math.PI / 180;
   function sin(d) { return Math.sin(d * rad); } function cos(d) { return Math.cos(d * rad); } function tan(d) { return Math.tan(d * rad); }
   function asin(x) { return Math.asin(x) / rad; } function acos(x) { return Math.acos(x) / rad; } function atan2(y, x) { return Math.atan2(y, x) / rad; }
@@ -52,8 +52,10 @@
     var out = {};
     Object.keys(h).forEach(function (k) { out[k] = h[k] == null ? null : Math.round((h[k] + tz - lng / 15) * 60); });
     if (M.ishaMin && out.maghrib != null) out.isha = out.maghrib + M.ishaMin;
+    // Islamic midnight = halfway from Maghrib to the next Fajr (today's Fajr + 24 h is within a minute of tomorrow's)
+    out.midnight = out.maghrib != null && out.fajr != null ? Math.round(out.maghrib + (out.fajr + 1440 - out.maghrib) / 2) : null;
     return out;
   }
-  function hm(m) { if (m == null) return '–'; m = ((m % 1440) + 1440) % 1440; return Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2); }
+  function hm(m) { if (m == null) return '–'; m = ((m % 1440) + 1440) % 1440; var h = Math.floor(m / 60); return (h % 12 || 12) + ':' + ('0' + (m % 60)).slice(-2) + (h < 12 ? ' am' : ' pm'); }   // 12-hour, am/pm
   window.Prayer = { times: times, hm: hm, METHODS: METHODS, CITIES: CITIES, NAMES: NAMES };
 })();

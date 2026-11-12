@@ -389,3 +389,8 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .ovh b { text-align:right; font-size:14px; display:flex; flex-direction:column; } .ovh b em { font-style:normal; font-size:11px; font-weight:500; }
 .ovh b em.up { color:var(--pri); } .ovh b em.down { color:var(--bad); }
 .sl .ver { align-self:flex-start; }
+/* v5.16 time picker: hour · minute · am/pm selects side by side */
+.tpk { display:flex; align-items:center; gap:4px; } .tpk .sel { flex:1; min-width:0; } .tpk b { color:var(--muted); font-weight:400; }
+.offs .tpk { margin-top:4px; }
+.wdt { grid-template-columns:1fr 1.25fr; } .tpk .sel { padding-left:8px; padding-right:2px; }
+.tpk .sel:last-child { flex:1.25; }

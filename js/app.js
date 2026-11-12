@@ -189,9 +189,9 @@
     var p = s.split(':'); return +p[0] * 60 + (+p[1] || 0);
   }
   function edgeTxt(s) {
-    if (s.indexOf('p:') !== 0) return s;
+    if (s.indexOf('p:') !== 0) return hm12(s);
     var q = s.split(':'), o = +q[2] || 0, m = mins(s);
-    return m != null ? Prayer.hm(m) : Prayer.NAMES[q[1]] + (o ? (o > 0 ? '+' : '−') + Math.abs(o) + 'm' : '');   // the list shows today's actual time
+    return m != null ? Prayer.hm(m) : Prayer.NAMES[q[1]] + (o ? (o > 0 ? '+' : '−') + offTxt(Math.abs(o)) : '');   // the list shows today's actual time
   }
   function winOwn(h) {
     var w = h.win || {}, f = mins(w.from), t = mins(w.to); if (f == null && t == null) return 0;
@@ -270,6 +270,7 @@
       if (h.parent && S.habit(h.parent)) return;
       if (!base(h, v)) return;
       var ss = subs(h.id).filter(function (x) { return base(x, v) && member(x, v); });
+      if (h.endAll && v !== 'arch' && liveSubs(h.id).length && !liveSubs(h.id).some(function (x) { return base(x, v); })) return;   // every sub-habit done / time's up / put away
       if (member(h, v) || ss.length) { if (member(h, v) || v !== 'star' || S.d.settings.starGroups !== false) keep[h.id] = 1; ss.forEach(function (x) { keep[x.id] = 1; }); }
     });
     return all.filter(function (h) { return keep[h.id]; });
@@ -932,13 +933,13 @@
   function wLog(key) {
     var L = S.wList(), e = key ? L.filter(function (x) { return x.k === key; })[0] : null, last = L[L.length - 1], tk = S.today();
     App._wk = e ? e.k : null;
-    wDlg('wlog', '<h3>' + (e ? 'Edit reading' : 'Log weight') + '</h3><div class="two"><label class="fl">Day<input type="date" id="wDate" value="' + (e ? e.d : tk) + '" max="' + tk + '"></label>' +
-      '<label class="fl">Time<input type="time" id="wTime" value="' + (e ? e.t : nowHM()) + '"></label></div>' +
+    wDlg('wlog', '<h3>' + (e ? 'Edit reading' : 'Log weight') + '</h3><div class="two wdt"><label class="fl">Day<input type="date" id="wDate" value="' + (e ? e.d : tk) + '" max="' + tk + '"></label>' +
+      '<label class="fl">Time' + timePick('wTime', e && e.t ? e.t : nowHM(), 1) + '</label></div>' +
       '<div class="numrow" style="margin-top:12px"><button class="btn step" data-act="wStep" data-d="-0.1" aria-label="Minus 0.1">−</button>' +
-      '<input id="wIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + (e ? kg(e.v) : last ? kg(last.v) : '') + '" placeholder="kg">' +
-      '<button class="btn step" data-act="wStep" data-d="0.1" aria-label="Plus 0.1">+</button></div><p class="small muted" style="margin-top:6px">In kg, up to 2 decimals (e.g. 78.45). Tap the number to type.</p>' +
+      '<input id="wIn" inputmode="numeric" enterkeyhint="done" autocomplete="off" value="' + (e ? kg(e.v) : last ? kg(last.v) : '') + '" placeholder="kg">' +
+      '<button class="btn step" data-act="wStep" data-d="0.1" aria-label="Plus 0.1">+</button></div><p class="small muted" style="margin-top:6px">In kg. Just type the digits — the point goes in by itself: 7845 → 78.45, 10230 → 102.30.</p>' +
       '<div class="row end">' + (e ? '<button class="btn danger-o" data-act="wDel">Delete</button><span class="grow"></span>' : '') + '<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSave">Save</button></div>');
-    var inp = document.getElementById('wIn'); inp.addEventListener('focus', function () { inp.select(); });
+    var inp = document.getElementById('wIn'); inp.addEventListener('focus', function () { inp.select(); }); autoDec(inp);
     inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') actions.wSave(); });
   }
   function wSdPick() {
@@ -968,14 +969,30 @@
     var w = S.d.settings.wW = S.d.settings.wW || {}; w.o = o; S.saveSettings(); openWeight(true);
   }); });
   // Height is entered and shown in feet + inches; it is still stored as heightCm (BMI, sync unchanged)
+  /* Weight typed as digits only: the last two digits are the decimals, so the point never has to be typed and
+     any weight works (8.50, 78.45, 102.30). A typed '.' or ',' is still respected as normal. */
+  function autoDec(inp) {
+    inp.addEventListener('input', function (ev) {
+      if ((ev.data === '.' || ev.data === ',') && !inp._man) {          // he typed a point himself: the digits so far become the whole kg, then leave his typing alone
+        inp._man = true; var w = inp.value.slice(0, -1).replace(/\D/g, '').replace(/^0+(?=\d)/, ''); inp.value = (w || '0') + '.'; return;
+      }
+      if (inp._man) return; var v = inp.value;
+      var d = v.replace(/\D/g, '').replace(/^0+(?=\d)/, ''); if (!d) { inp.value = ''; return; }
+      while (d.length < 3) d = '0' + d;
+      inp.value = String(+d.slice(0, -2)) + '.' + d.slice(-2);
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
+    });
+    inp.addEventListener('focus', function () { inp._man = false; });
+  }
   function ftParts(cm) { var t = Math.round(cm / 2.54), f = Math.floor(t / 12); return [f, t - f * 12]; }
   function ftIn(cm) { var p = ftParts(cm); return p[0] + '′ ' + p[1] + '″'; }
   function wSetup() {
     var st = S.d.settings, p = st.heightCm ? ftParts(st.heightCm) : ['', ''];
     wDlg('wset', '<h3>Height &amp; target</h3><div class="two"><label class="fl">Height<span class="ftin"><input id="wFt" inputmode="numeric" value="' + p[0] + '" placeholder="5"><em>ft</em><input id="wIn2" inputmode="numeric" value="' + p[1] + '" placeholder="8"><em>in</em></span></label>' +
-      '<label class="fl">Target (kg)<input id="wT" inputmode="decimal" value="' + (st.wTarget ? kg(st.wTarget) : '') + '" placeholder="optional"></label></div>' +
+      '<label class="fl">Target (kg)<input id="wT" inputmode="numeric" value="' + (st.wTarget ? kg(st.wTarget) : '') + '" placeholder="optional"></label></div>' +
       '<p class="small muted" style="margin-top:8px">Height is used only for BMI. Leave the target blank for none.</p>' +
       '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSetSave">Save</button></div>');
+    autoDec(document.getElementById('wT'));
   }
   function wDlg(name, html) {   // a dialog over the Weight screen, which stays visible behind it
     if (!/^w(eight|log|set)$/.test(sheetOpen || '')) openWeight(); else openWeight(true);
@@ -996,18 +1013,39 @@
     draft._from = sheetOpen === 'stats' ? 'stats' : null;
     drawEdit();
   }
-  function edgeField(id, label, v) {   // SL 35: clock time, or a prayer ± minutes
+  function offTxt(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'h' : '') + (r || !h ? r + 'm' : ''); }
+  function opts(list, cur) { return list.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(cur) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
+  // A clock time picked as hour · minute · am/pm (no 24-hour clock). Stored as 'HH:MM'. Blank = no limit.
+  function timePick(id, v, step, blank) {
+    var p = v ? v.split(':') : null, h = p ? +p[0] : null, m = p ? +p[1] : null, mm = [];
+    for (var i = 0; i < 60; i += step) mm.push(i); if (m != null && mm.indexOf(m) < 0) { mm.push(m); mm.sort(function (a, b) { return a - b; }); }
+    var hrs = []; for (var j = 1; j <= 12; j++) hrs.push([j, j]);
+    return '<span class="tpk"><select id="' + id + 'H" class="sel">' + (blank ? '<option value="">–</option>' : '') + opts(hrs, h == null ? '' : (h % 12 || 12)) + '</select>' +
+      '<b>:</b><select id="' + id + 'M" class="sel">' + opts(mm.map(function (x) { return [x, ('0' + x).slice(-2)]; }), m == null ? 0 : m) + '</select>' +
+      '<select id="' + id + 'P" class="sel">' + opts([['am', 'am'], ['pm', 'pm']], h == null ? (blank ? 'am' : 'am') : h < 12 ? 'am' : 'pm') + '</select></span>';
+  }
+  function timeRead(id) {
+    var H = document.getElementById(id + 'H'); if (!H || H.value === '') return '';
+    var h = +H.value % 12 + (document.getElementById(id + 'P').value === 'pm' ? 12 : 0), m = +document.getElementById(id + 'M').value;
+    return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+  }
+  function edgeField(id, label, v) {   // SL 35: clock time, or a prayer ± hours/minutes
     var pr = v && v.indexOf('p:') === 0, q = pr ? v.split(':') : [], T = prayerToday();
+    var o = pr ? +q[2] || 0 : 0, a = Math.abs(o), hh = [], mm = [];
+    for (var i = 0; i <= 12; i++) hh.push([i, i + ' h']); for (var j = 0; j < 60; j += 5) mm.push([j, j + ' min']);
+    if (a % 5) { mm.push([a % 60, (a % 60) + ' min']); mm.sort(function (x, y) { return x[0] - y[0]; }); }
     return '<label class="tl">' + label + '<select id="f' + id + 'K" data-act="edgeKind" class="sel">' + [['', 'Clock time']].concat(Object.keys(Prayer.NAMES).map(function (k) { return [k, Prayer.NAMES[k] + (T && T[k] != null ? ' · ' + Prayer.hm(T[k]) : '')]; })).map(function (o) {
         return '<option value="' + o[0] + '"' + ((pr ? q[1] : '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
-      (pr ? '<span class="offs"><input id="f' + id + 'O" inputmode="numeric" value="' + (+q[2] || 0) + '" autocomplete="off"><em>min (−before / +after)</em></span>'
-        : '<input id="f' + id + '" type="time" value="' + esc(v || '') + '">') + '</label>';
+      (pr ? '<span class="offs"><select id="f' + id + 'S" class="sel">' + opts([['0', 'At that time'], ['-1', 'Before it'], ['1', 'After it']], o < 0 ? '-1' : o > 0 ? '1' : '0') + '</select>' +
+          '<span class="tpk"><select id="f' + id + 'OH" class="sel">' + opts(hh, Math.floor(a / 60)) + '</select><select id="f' + id + 'OM" class="sel">' + opts(mm, a % 60) + '</select></span></span>'
+        : timePick('f' + id, v || '', 5, true)) + '</label>';
   }
   function edgeRead(id) {
     var k = document.getElementById('f' + id + 'K'); if (!k) return null;
-    if (!k.value) { var t = document.getElementById('f' + id); return t ? t.value || '' : ''; }
-    var o = document.getElementById('f' + id + 'O'), n = o ? parseInt((o.value || '0').replace('−', '-'), 10) : 0;
-    return 'p:' + k.value + ':' + (isFinite(n) ? Math.max(-720, Math.min(720, n)) : 0);
+    if (!k.value) return timeRead('f' + id);
+    var sg = document.getElementById('f' + id + 'S'), H = document.getElementById('f' + id + 'OH'), M = document.getElementById('f' + id + 'OM');
+    var n = sg ? +sg.value * ((H ? +H.value : 0) * 60 + (M ? +M.value : 0)) : 0;
+    return 'p:' + k.value + ':' + Math.max(-720, Math.min(720, n));
   }
   function seg(name, cur, opts, locked) {
     return '<div class="seg' + (locked ? ' locked' : '') + '">' + opts.map(function (o) {
@@ -1028,7 +1066,8 @@
           '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now.' + ((a.n || 1) > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + '</span>' +
           '<button class="mi tg flat" data-act="ef" data-f="prog"><span>Show progress (e.g. “2 of ' + (a.n || 1) + '”)<br><span class="small muted">Off: the group stays ✗ until it’s done.</span></span><span class="box' + (a.prog !== false ? ' on' : '') + '">' + (a.prog !== false ? ICON.check : '') + '</span></button>'
         : '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min" autocomplete="off"></label>' +
-          '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>');
+          '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>') +
+      '<button class="mi tg flat" data-act="ef" data-f="endAll"><span>Hide the group when every sub-habit is done or its time is up<br><span class="small muted">For sub-habits with different hide times (e.g. each prayer). Follows the eye drawer: turn on “Done for today” or “Time’s up” there to see them again.</span></span><span class="box' + (h.endAll ? ' on' : '') + '">' + (h.endAll ? ICON.check : '') + '</span></button>';
     var html =
       '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (h._new ? 'New habit' : 'Edit habit') + '</h2>' +
       (!h._new && !h._from ? '<button class="ib" data-act="statOpen" aria-label="Stats">' + ICON.chart + '</button>' : '') + '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
@@ -1037,7 +1076,7 @@
       '<div class="fl">Colour<div class="sw">' + COLORS.map(function (c) {
         return '<button class="dot' + (c === h.color ? ' on' : '') + '" style="background:' + c + '" data-act="ef" data-f="color" data-v="' + c + '" aria-label="Colour ' + c + '"></button>';
       }).join('') + '</div></div>' +
-      (inG ? '<p class="small muted">Sub-habit of <b style="color:' + esc(inG.color) + '">' + esc(inG.name) + '</b>. To take it out: hold its name and slide left.</p>' : '') +
+      (grp ? '' : grpPick(h)) +
       (grp ? groupFields :
       '<div class="fl">Type' + seg('type', h.type, [['yn', 'Yes / No'], ['num', 'Measurable']]) + typeNote(h) + '</div>' +
       '<div class="fl">Habit is' + seg('kind', h.kind, [['good', 'Good — build it'], ['bad', 'Bad — quit it']]) +
@@ -1103,8 +1142,16 @@
     return '<label class="inl">Each past tick becomes <input id="fTick" inputmode="decimal" value="' + num(h._tick != null ? h._tick : (h.target || 1)) + '"></label>' +
       '<span class="small muted">Ticks that were numbers before go back to those numbers.</span>';
   }
+  // "In group": put a habit under another (or take it out) without the hold-and-slide gesture
+  function grpPick(h) {
+    var ts = S.habits().filter(function (x) { return !x.parent && !x.archived && x.id !== h.id; });
+    return '<label class="fl">In group<select id="fPar" class="sel"><option value="">None (its own row)</option>' +
+      ts.map(function (x) { return '<option value="' + x.id + '"' + (h.parent === x.id ? ' selected' : '') + '>' + esc(x.name) + (isGroup(x) ? ' · ' + subs(x.id).length : '') + '</option>'; }).join('') +
+      '</select><span class="small muted">Or on the list: hold its name and slide right (in) / left (out).</span></label>';
+  }
   function readInputs() {   // keep typed values before a redraw
     var g = function (id) { var el = document.getElementById(id); return el && !el.disabled ? el.value : null; };   // greyed (enforced) fields stay the group's
+    if (document.getElementById('fPar')) draft.parent = document.getElementById('fPar').value || null;
     if (g('fName') != null) draft.name = g('fName');
     if (g('fUnit') != null) draft.unit = g('fUnit').trim();
     if (g('fTarget') != null) { var t = parseFloat(g('fTarget').replace(',', '.')); draft.target = isFinite(t) ? t : draft.target; }
@@ -1520,6 +1567,7 @@
       else if (f === 'type') { h.type = v; if (v === 'num') { if (!(h.target >= 0)) h.target = 1; if (!h.tt) h.tt = h.kind === 'bad' ? 'max' : 'min'; if (h.unit == null) h.unit = ''; } }
       else if (f === 'kind') { h.kind = v; if (!h._ttSet) h.tt = v === 'bad' ? 'max' : 'min'; }
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
+      else if (f === 'endAll') h.endAll = !h.endAll;
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') {
         h.freq.t = v;
@@ -1550,7 +1598,15 @@
       var back = h._from === 'stats';
       delete h._new; delete h._ttSet; delete h._tick; delete h._from;
       var done = function () {
-        if (sw) S.switchType(h, h.type, tick); S.putHabit(h); if (h.link) fillHifz(false); App.render();
+        if (sw) S.switchType(h, h.type, tick);
+        var op = o ? o.parent || null : null, np = h.parent || null;
+        if (o && op !== np) {
+          var order = S.habits().map(function (x) { return x.id; }).filter(function (id) { return id !== h.id; }), anchor = np || op, at = order.length;
+          if (anchor) { order.forEach(function (id, i) { if (id === anchor || S.habit(id).parent === anchor) at = i + 1; }); }
+          order.splice(at, 0, h.id); S.reorder(order);
+          if (np && folded(np)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[np] = false; S.saveUi(); }
+        }
+        S.putHabit(h); if (h.link) fillHifz(false); App.render();
         var rr = rep(h);
         if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
         else if (rr && !rr.show && !SH().rest) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
@@ -1608,7 +1664,7 @@
     wSdSave: function () { var v = document.getElementById('wSd').value; if (!v) return App.toast('Pick a day'); S.d.settings.wStart = v; S.d.settings.wStartOn = true; S.saveSettings(); wBack(); },
     wStep: function (el) { var i = document.getElementById('wIn'), v = parseFloat((i.value || '0').replace(',', '.')) || 0; i.value = kg(Math.max(0, v + +el.dataset.d)); },
     wSave: function () {
-      var d = document.getElementById('wDate').value || S.today(), tm = document.getElementById('wTime').value, t = document.getElementById('wIn').value.replace(',', '.').trim(), v = parseFloat(t);
+      var d = document.getElementById('wDate').value || S.today(), tm = timeRead('wTime'), t = document.getElementById('wIn').value.replace(',', '.').trim(), v = parseFloat(t);
       if (!(v > 0 && v < 500)) return App.toast('Enter your weight in kg');
       if (d > S.today()) return App.toast('That day hasn’t come yet');
       var k = d + (tm ? 'T' + tm : '');
