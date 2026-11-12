@@ -304,19 +304,20 @@
   }
   var shwEdit = false;
   function drawShow() {
-    var s = SH(), f = S.d.settings, u = S.d.ui, full = shwEdit || u.showFull, pin = f.showPin, n = showCounts(view()), g = '', h = '';
+    var s = SH(), f = S.d.settings, u = S.d.ui, full = shwEdit || u.showFull, dsc = u.showDesc === true, pin = f.showPin, n = showCounts(view()), g = '', h = '';
     SHOW.forEach(function (x) {
       var k = x[0]; if (k === 'skip' && !f.skipDays) return;
       if (!full && pin.indexOf(k) < 0) return;
       if (full && x[1] !== g) { g = x[1]; h += '<div class="shg">' + g + '</div>'; }
       var p = pin.indexOf(k) >= 0, ct = '<em class="shc">' + (n[k] || 0) + '</em>';
       h += shwEdit
-        ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b><small>' + x[3] + '</small></span>' + ct + '</button>'
-        : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (full ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
+        ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '</button>'
+        : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
     });
     if (!h) h = '<p class="small muted shn">Tap the pen to pick the switches you want here.</p>';
     var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : 'What’s on your list') + '</b>' +
       (shwEdit ? '' : '<a href="#" data-act="shwFull">' + (u.showFull ? 'Short' : 'See all') + '</a>') +
+      '<button class="dtl" data-act="shwDesc" aria-pressed="' + dsc + '"><i class="tgl' + (dsc ? ' on' : '') + '"></i>Notes</button>' +
       '<button class="ib' + (shwEdit ? ' lit' : '') + '" data-act="shwPen" aria-label="' + (shwEdit ? 'Done' : 'Choose short list') + '">' + (shwEdit ? ICON.check : ICON.pen) + '</button></div>' +
       '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.hid ? n.hid + ' tucked away' : 'Everything showing') + '</div>' + h +
       (shwEdit ? '' : '<div class="shf"><a href="#" data-act="shwAll">Show everything</a><a href="#" class="muted" data-act="shwUsual">Back to my usual</a></div>');
@@ -1538,6 +1539,7 @@
     viewArch: function () { toggleView('arch'); },
     shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
     shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
+    shwDesc: function () { S.d.ui.showDesc = !(S.d.ui.showDesc === true); S.saveUi(); drawShow(); },
     shwFull: function () { S.d.ui.showFull = !S.d.ui.showFull; S.saveUi(); drawShow(); },
     shwPen: function () { shwEdit = !shwEdit; drawShow(); },
     shwPin: function (el) { var p = S.d.settings.showPin, k = el.dataset.k, i = p.indexOf(k); if (i < 0) p.push(k); else p.splice(i, 1); S.saveSettings(); drawShow(); },
