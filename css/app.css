@@ -306,3 +306,4 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 .mi.muted[disabled] { color:var(--muted); cursor:default; text-align:left; }
 #app:has(.bstrip) ~ #toast { bottom:calc(122px + env(safe-area-inset-bottom)); }
 .mi > .i { width:18px; height:18px; vertical-align:-4px; margin-right:8px; }
+.ftin { display:flex; align-items:center; gap:6px; } .ftin input { width:100%; min-width:0; } .ftin em { font-style:normal; color:var(--muted); font-size:13px; }

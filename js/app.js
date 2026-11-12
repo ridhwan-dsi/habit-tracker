@@ -702,7 +702,7 @@
         var prev = A[i + 1], d = prev ? e.v - prev.v : null;
         return '<button class="wrow" data-act="wLog" data-k="' + e.k + '"><span>' + dLab(e.k) + '</span><b>' + kg(e.v) + '</b><em class="' + (d == null || Math.abs(d) < 0.005 ? '' : d < 0 ? 'dn' : 'upw') + '">' + (d == null ? '' : (d > 0 ? '+' : d < 0 ? '−' : '±') + kg(Math.abs(d))) + '</em></button>';
       }).join('') + '</section>' : '') +
-      '<button class="mi wset" data-act="wSetup"><span>Height ' + (st.heightCm ? st.heightCm + ' cm' : 'not set') + ' · Target ' + (tgt ? kg(tgt) + ' kg' : 'none') + '</span><span class="small muted">Change</span></button></div>';
+      '<button class="mi wset" data-act="wSetup"><span>Height ' + (st.heightCm ? ftIn(st.heightCm) : 'not set') + ' · Target ' + (tgt ? kg(tgt) + ' kg' : 'none') + '</span><span class="small muted">Change</span></button></div>';
     var y = sheet.scrollTop, inW = /^w(eight|log|set)$/.test(sheetOpen || '');
     if (inW) { sheetOpen = 'weight'; sheet.className = 'sheet page'; sheet.innerHTML = html; scrim.hidden = true; sheet.scrollTop = keepY ? y : 0; } else showSheet('weight', html, 'page');
   }
@@ -737,9 +737,12 @@
       var v = (S.d.weights[this.value] || {}).v; if (v != null) inp.value = kg(v);
     });
   }
+  // Height is entered and shown in feet + inches; it is still stored as heightCm (BMI, sync unchanged)
+  function ftParts(cm) { var t = Math.round(cm / 2.54), f = Math.floor(t / 12); return [f, t - f * 12]; }
+  function ftIn(cm) { var p = ftParts(cm); return p[0] + '′ ' + p[1] + '″'; }
   function wSetup() {
-    var st = S.d.settings;
-    wDlg('wset', '<h3>Height &amp; target</h3><div class="two"><label class="fl">Height (cm)<input id="wH" inputmode="decimal" value="' + (st.heightCm || '') + '" placeholder="e.g. 172"></label>' +
+    var st = S.d.settings, p = st.heightCm ? ftParts(st.heightCm) : ['', ''];
+    wDlg('wset', '<h3>Height &amp; target</h3><div class="two"><label class="fl">Height<span class="ftin"><input id="wFt" inputmode="numeric" value="' + p[0] + '" placeholder="5"><em>ft</em><input id="wIn2" inputmode="numeric" value="' + p[1] + '" placeholder="8"><em>in</em></span></label>' +
       '<label class="fl">Target (kg)<input id="wT" inputmode="decimal" value="' + (st.wTarget ? kg(st.wTarget) : '') + '" placeholder="optional"></label></div>' +
       '<p class="small muted" style="margin-top:8px">Height is used only for BMI. Leave the target blank for none.</p>' +
       '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSetSave">Save</button></div>');
@@ -1270,8 +1273,9 @@
     wDel: function () { var k = document.getElementById('wDate').value; S.wSet(k, null); wBack(); App.toast('Deleted'); },
     wSetup: function () { wSetup(); },
     wSetSave: function () {
-      var h = parseFloat(document.getElementById('wH').value.replace(',', '.')), t = parseFloat(document.getElementById('wT').value.replace(',', '.'));
-      if (document.getElementById('wH').value.trim() && !(h > 50 && h < 260)) return App.toast('Height in cm, e.g. 172');
+      var fs = document.getElementById('wFt').value.trim(), is = document.getElementById('wIn2').value.trim(), t = parseFloat(document.getElementById('wT').value.replace(',', '.'));
+      var ft = parseFloat(fs || '0'), inch = parseFloat((is || '0').replace(',', '.')), h = (ft * 12 + inch) * 2.54;
+      if ((fs || is) && !(ft >= 0 && inch >= 0 && inch < 12 && h > 50 && h < 260)) return App.toast('Height in feet and inches, e.g. 5 ft 8 in');
       if (document.getElementById('wT').value.trim() && !(t > 0 && t < 500)) return App.toast('Target in kg, e.g. 75');
       S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
       S.saveSettings(); wBack();
