@@ -922,6 +922,12 @@
       freqFields(h, grp) +
       (!grp && h.type === 'num' ? '<label class="fl">Default value<input id="fStep" inputmode="decimal" value="' + (h.step ? num(h.step) : '') + '" placeholder="1" autocomplete="off">' +
         '<span class="small muted">The number box opens with this filled in, so OK saves it in one tap. + and − change by this much.</span></label>' : '') +
+      (!grp && h.kind !== 'bad' && (h.link || window.HifzLink && HifzLink.have()) ? '<div class="fl">Fill from Hifz' +
+        seg('link', h.link || '', [['', 'Off'], ['pg', 'Qur’an pages'], ['hz', 'Hifz minutes']]) +
+        '<span class="small muted">' + (!h.link ? 'Days are filled in from the Hifz app on this phone; your other devices get them through sync.'
+          : h.type === 'num' ? (h.link === 'pg' ? 'Each day shows the pages you read in Hifz (all readings).' : 'Each day shows your Hifz memorisation minutes.')
+          : h.link === 'pg' ? 'Ticks on days you read any Qur’an pages in Hifz.' : 'Ticks on days your Hifz time reaches its daily goal (5 min if no goal is set).') +
+          ' Hifz never removes a mark you made yourself.</span></div>' : '') +
       (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
         [{ id: '', name: 'Main' }].concat(S.tabs()).map(function (t) {
           return '<button class="tchip' + ((h.tab || '') === t.id ? ' on' : '') + '" data-act="ef" data-f="tab" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</button>';
@@ -1381,6 +1387,7 @@
       else if (f === 'miss') { h.miss = h.miss || { keep: null }; h.miss.t = v; }
       else if (f === 'enf') h.enf = !h.enf;
       else if (f === 'tab') h.tab = v || null;
+      else if (f === 'link') h.link = v || null;
       else if (f === 'fold0') h.fold0 = v === '1';
       else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
       else if (f === 'winClear') h.win = { from: '', to: '' };
@@ -1400,7 +1407,7 @@
       var back = h._from === 'stats';
       delete h._new; delete h._ttSet; delete h._tick; delete h._from;
       var done = function () {
-        if (sw) S.switchType(h, h.type, tick); S.putHabit(h); App.render();
+        if (sw) S.switchType(h, h.type, tick); S.putHabit(h); if (h.link) fillHifz(false); App.render();
         var rr = rep(h);
         if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
         else if (rr && !rr.show && S.d.settings.hideNotDue !== false) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
@@ -1513,11 +1520,30 @@
     else if (!busy && winSig() !== lastWin) App.render();   // a time window just opened or closed
     lastDay = t;
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkDay(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { checkDay(); fillHifz(true); } });
+
+  /* ---- SL 26: days filled in from the Hifz app on this phone (js/hifz.js). Only adds: a higher Hifz number replaces
+     a lower one, a tick is added, nothing is ever cleared. Runs on open, on return to the app and when Hifz saves. ---- */
+  function fillHifz(draw) {
+    if (S.demo || !window.HifzLink) return;
+    var hs = S.habits().filter(function (h) { return h.link && !h.archived && !isGroup(h); });
+    if (!hs.length || !HifzLink.have()) return;
+    var n = 0, now = Date.now(), ds = S.days(31);
+    hs.forEach(function (h) {
+      ds.forEach(function (d) {
+        var v = HifzLink.value(h, d.k), cur = S.val(h.id, d.k);
+        if (v == null || S.skipped(h.id, d.k) || (cur != null && cur >= v)) return;
+        S.d.entries[h.id + '|' + d.k] = { v: v, s: 0, u: now, hz: 1 }; n++;
+      });
+    });
+    if (n) { S.save(); if (draw && !(sheetOpen || sel || drag || lp)) App.render(); }
+  }
+  window.addEventListener('storage', function (e) { if (e.key === 'hifz.v2') fillHifz(true); });
   setInterval(checkDay, 30000);
 
   /* ---- Boot ---- */
   S.load();
+  try { fillHifz(false); } catch (e) { console.warn('Hifz link', e); }
   // Reopened within an hour: same view and scroll position. Later than that: back to All, at the top.
   var U = S.d.ui, fresh = U.left && Date.now() - U.left < 3600000;
   if (!fresh) { U.view = 'all'; U.scroll = null; }
