@@ -18,7 +18,7 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .sc::-webkit-scrollbar { display:none; }
 .grid { width:max-content; position:relative; }
 .drow, .hrow { display:flex; }
-.drow { position:sticky; top:0; z-index:3; background:var(--head); padding:2px 0 6px; }
+.drow { position:sticky; top:0; z-index:4; background:var(--head); padding:2px 0 6px; }
 .nm { position:sticky; left:0; z-index:2; width:calc(var(--nw,180px) + 12px); flex:none; padding-left:12px; background:var(--bg); display:flex; }
 .drow .nm { background:var(--head); }
 .dh { width:48px; flex:none; scroll-snap-align:start; text-align:center; font-size:10.5px; color:var(--muted); line-height:1.25; display:flex; flex-direction:column; }
@@ -156,7 +156,9 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .mi.danger-t { color:var(--danger); }
 .st { width:13px; height:13px; fill:var(--muted); stroke:none; flex:none; margin-left:6px; opacity:.8; }
 .wt { display:block; font-size:10.5px; color:var(--muted); font-weight:400; margin-top:1px; }
-.sech { position:sticky; left:0; width:calc(var(--nw,180px) + 12px); padding:10px 0 6px 16px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.sech { position:sticky; left:0; top:var(--dh,40px); z-index:3; display:flex; align-items:center; gap:2px; width:var(--scw,100%); box-sizing:border-box; padding:10px 0 6px 16px; border:0; background:var(--bg); font:inherit; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); text-align:left; cursor:pointer; }
+.sech .chev { margin:0 4px 0 -4px; width:14px; height:14px; }
+.sech em { font-style:normal; font-weight:600; margin-left:6px; padding:0 6px; border-radius:9px; background:var(--card,rgba(255,255,255,.08)); letter-spacing:0; }
 .tl { display:flex; flex-direction:column; gap:5px; font-size:12px; }
 .form input[type=time] { min-height:46px; color-scheme:dark; } [data-theme=light] .form input[type=time] { color-scheme:light; }
 .form a { color:var(--pri); }

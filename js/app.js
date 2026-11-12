@@ -290,10 +290,16 @@
       var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent) || !shown[h.parent]; }), rows;
       if (mode === 'off' && (v === 'all' || v === 'star') && S.tabs().length) {
         // One page, a header per tab: habits with no tab first, then each tab's habits under its name.
+        // SL 41: tap a header to fold/unfold that tab's section (ui.secFold, this phone only); headers stay pinned under the date row.
         var by = function (id) { return tops.filter(function (h) { var t = S.tab(h.tab); return (t ? t.id : null) === id; }); };
-        rows = (by(null).length && visTabs().length ? '<div class="sech"><span>Main</span></div>' : '') + by(null).map(card).join('') + visTabs().map(function (t) {
-          var hs = by(t.id); if (!hs.length) return '';
-          return '<div class="sech"><span>' + esc(t.name) + '</span></div>' + hs.map(card).join('');
+        var sf = S.d.ui.secFold || {};
+        var sec = function (id, name, hs) {
+          var shut = !!sf[id];
+          return '<button class="sech" data-act="secFold" data-sec="' + id + '"><svg class="chev' + (shut ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg><span>' + esc(name) + '</span>' +
+            (shut ? '<em>' + hs.length + '</em>' : '') + '</button>' + (shut ? '' : hs.map(card).join(''));
+        };
+        rows = (by(null).length && visTabs().length ? sec('main', 'Main', by(null)) : by(null).map(card).join('')) + visTabs().map(function (t) {
+          var hs = by(t.id); return hs.length ? sec(t.id, t.name, hs) : '';
         }).join('');
       } else rows = tops.map(card).join('');
       var n = sel ? Object.keys(sel).length : 0, lit = f.hideEntered || !f.hideArchived;
@@ -345,6 +351,8 @@
       root.classList.toggle('noscr', f.hScroll === false);
       root.classList.toggle('nofrz', f.freezeToday === false);
       sizeCols();
+      var dr = root.querySelector('.drow'); if (dr) root.style.setProperty('--dh', dr.offsetHeight + 'px');
+      var scx = document.getElementById('sc'); if (scx) root.style.setProperty('--scw', scx.clientWidth + 'px');   // section headers pin just below the date row
       sc = document.getElementById('sc');
       var swp = document.getElementById('swp'); if (swp) swp.style.minHeight = Math.max(96, sc.clientHeight - document.getElementById('grid').offsetHeight - 24) + 'px';   // blank area: swipe to change tab
       if (sc && keep) { sc.scrollLeft = f.hScroll === false ? 0 : keep.l; sc.scrollTop = keep.t; }
@@ -1280,6 +1288,7 @@
         };
       });
     },
+    secFold: function (el) { var F = S.d.ui.secFold = S.d.ui.secFold || {}, id = el.getAttribute('data-sec'); if (F[id]) delete F[id]; else F[id] = 1; S.saveUi(); App.render(); },
     home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { toggleView('star'); },
     viewArch: function () { toggleView('arch'); },
