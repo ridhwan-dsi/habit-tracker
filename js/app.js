@@ -384,6 +384,7 @@
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
+        (S.d.settings.skipDays ? '<button class="ib' + (allSkipped() ? ' lit' : '') + '" data-act="selSkip" aria-label="' + (allSkipped() ? 'Unskip today' : 'Skip today') + '"' + (n ? '' : ' disabled') + '>' + ICON.skip + '</button>' : '') +
         '<button class="ib" data-act="selHide" aria-label="' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
@@ -473,6 +474,9 @@
   // v5.18: a Hidden (still active) habit with history must be archived before it can be deleted
   function lockedDel(id) { var h = S.habit(id); if (!h || h.archived || !h.hid) return false; return S.countEntries(id) > 0 || subs(id).some(function (x) { return !x.archived && S.countEntries(x.id) > 0; }); }
   function allHidden() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.hid; }); }
+  // v5.20: Skip today for many at once from the select bar. A group stands for its live sub-habits; habits already done today are left alone.
+  function skipTargets() { var o = []; Object.keys(sel || {}).forEach(function (id) { var h = S.habit(id); if (!h) return; (isGroup(h) ? liveSubs(id) : [h]).forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); }); return o; }
+  function allSkipped() { var t = S.today(), o = skipTargets(); return o.length > 0 && o.every(function (h) { return S.skipped(h.id, t); }); }
   function allArchived() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.archived; }); }
   function selStart(id) {
     if (!sel) { sel = {}; history.pushState({ sel: 1 }, ''); }
@@ -1254,7 +1258,7 @@
         (archT ? go('hiddenTabs', 'Archived tabs', S.tabs().filter(function (t) { return t.hidden; }).length, 'Tabs you archived, with their habits. Hold one to bring it back.') : '') +
         go('ptOpen', 'Prayer times', s.pt && s.pt.lat != null ? esc(s.pt.name || 'Set') : 'Not set', 'Lets a time window start or end at a prayer, e.g. “Asr − 15 min”.')) +
       grp('Marking', tg('shortPress', 'Mark with a short tap', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
-        tg('skipDays', 'Skip days', 'Yes/no: hold again after a tick to mark a skip — neither done nor missed. Measurable: Skip button in the number box.')) +
+        tg('skipDays', 'Skip days', 'A skip is neither done nor missed. Hold a habit name, select several, tap ⏭ to skip today for all. Also: yes/no hold again after a tick; measurable Skip button in the number box.')) +
       grp('Day &amp; week', segRow('Day ends late', 'Until this many hours after midnight you are still logging the day before.',
           seg('setNum', 'extendH', [0, 1, 2, 3, 4, 5].map(function (x) { return [x, x ? x + 'h' : 'Off']; }), s.extendH || 0)) +
         segRow('Week starts', '', seg('setNum', 'weekStart', [[6, 'Sat'], [0, 'Sun'], [1, 'Mon']], s.weekStart || 0))) +
@@ -1456,6 +1460,14 @@
       var ids = Object.keys(sel), on = !allHidden();
       ids.forEach(function (id) { var h = S.habit(id); if (h) { h.hid = on; S.putHabit(h); } });
       selEnd(function () { App.toast((on ? 'Hidden ' : 'Unhidden ') + ids.length + (on && !SH().hid ? ' — the eye below shows them' : '')); });
+    },
+    selSkip: function () {
+      var t = S.today(), o = skipTargets(), on = !allSkipped(), n = 0, kept = 0;
+      o.forEach(function (h) {
+        if (on) { if (S.skipped(h.id, t)) return; if (S.val(h.id, t) != null) { kept++; return; } S.setSkip(h.id, t); n++; }
+        else if (S.skipped(h.id, t)) { S.setVal(h.id, t, null); n++; }
+      });
+      selEnd(function () { App.toast((on ? 'Skipped today: ' : 'Skip cleared: ') + n + (kept ? ' · ' + kept + ' already done, left as is' : '')); });
     },
     selStar: function () {
       var ids = Object.keys(sel), on = !allStarred();
