@@ -52,6 +52,7 @@
         var wd2 = new Date(t); wd2.setDate(t.getDate() - j); kg += -0.018 + (rnd() - 0.5) * 0.35;
         if (rnd() < 0.8) Wt[Store.key(wd2)] = { v: Math.round(kg * 100) / 100, u: now };
       }
+      var tk = Store.key(t); if (Wt[tk]) { Wt[tk + 'T06:05'] = { v: Wt[tk].v, u: now }; Wt[tk + 'T06:50'] = { v: Math.round((Wt[tk].v + 0.6) * 100) / 100, u: now }; delete Wt[tk]; }   // two weigh-ins today
       var st = JSON.parse(JSON.stringify(settings)); st.heightCm = 172; st.wTarget = 75;
       return { schema: 1, acct: null, su: 0, demo: true,
         settings: st, habits: H, entries: E, tabs: T, weights: Wt, ui: { view: 'all' } };

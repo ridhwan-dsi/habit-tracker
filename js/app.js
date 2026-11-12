@@ -38,6 +38,9 @@
     scale: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9.5a5 5 0 018 0M12 9.5l1.6-2"/></svg>',
     sync: '<svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 01-14.3 4.9M4 12a8 8 0 0114.3-4.9"/><path d="M18.5 3v4.5H14M5.5 21v-4.5H10"/></svg>',
     cloudOk: '<svg class="i" viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 00.6-8 6 6 0 00-11.6-1.4A4.6 4.6 0 007 18.5z"/><path d="M9.5 13.5l2 2 3.5-3.8"/></svg>',
+    eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeOff: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6a9.8 9.8 0 011.4-.1c6 0 9.5 6.1 9.5 6.1a16 16 0 01-2.6 3.3M6.2 6.9A16.7 16.7 0 002.5 12s3.5 6.5 9.5 6.5a9 9 0 004.6-1.3M9.9 10a3 3 0 004.1 4.1"/></svg>',
+    cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', win: 'Outside time window', due: 'Overdue & missed' };
@@ -683,71 +686,152 @@
     return '<button class="ib sync ' + cls + '" id="syncBtn" data-act="syncNow" aria-label="' + lab + '">' + (cls === 'ok' ? ICON.cloudOk : ICON.sync) + '</button>';
   }
 
-  /* ---- SL 34 Weight: its own screen from the bottom bar. One reading a day in kg (2 decimals), BMI from a height
-     entered once, change over week / month / year, optional target drawn as a flat line. ---- */
-  var wRange = 'week', MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  /* ---- Weight (SL 34, redesigned v5.8): its own screen from the bottom bar. Readings in kg (2 decimals), several a day
+     allowed (key 'YYYY-MM-DDTHH:MM'; older readings are date-only keys). Widgets: Summary, Change over, Trend, Log —
+     the pen turns on edit mode: eye = show/hide, handle = drag to reorder, plus "One entry per day" (Latest / Smallest /
+     Highest). Start-day switch: on = every widget counts only readings from that day; off = all readings. ---- */
+  var wRange = 'all', wEdit = false, MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var WG = { sum: 'Summary', perf: 'Change over', chart: 'Trend', log: 'Log' };
   function kg(v) { return (Math.round(v * 100) / 100).toFixed(2); }
   function dLab(k) { var p = k.split('-'), t = S.today(); return k === t ? 'Today' : (+p[2]) + ' ' + MON3[+p[1] - 1] + (p[0] !== t.slice(0, 4) ? ' ' + p[0] : ''); }
+  function dLong(k) { var p = k.split('-'); return (+p[2]) + ' ' + MON3[+p[1] - 1] + ' ' + p[0]; }
   function kAgo(k, n) { var p = k.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2] - n, 12); return S.key(d); }
+  function hm12(t) { if (!t) return ''; var p = t.split(':'), h = +p[0]; return (h % 12 || 12) + ':' + p[1] + (h < 12 ? ' am' : ' pm'); }
   function bmiTxt(v) {
     var h = S.d.settings.heightCm; if (!h) return '';
     var b = v / Math.pow(h / 100, 2), c = b < 18.5 ? 'Underweight' : b < 25 ? 'Healthy' : b < 30 ? 'Overweight' : 'Obese';
     return 'BMI ' + b.toFixed(1) + ' · ' + c;
   }
-  function openWeight(keepY) {
-    var L = S.wList(), st = S.d.settings, tgt = st.wTarget, last = L[L.length - 1], tk = S.today();
-    var span = { week: 7, month: 30, year: 365 }[wRange], from = kAgo(tk, span);
-    var R = L.filter(function (e) { return e.k >= from; });
-    var base = null; L.forEach(function (e) { if (e.k <= from) base = e; }); if (!base) base = R[0];
-    var chg = last && base && base !== last ? last.v - base.v : null;
-    var toward = chg == null || !tgt ? null : (last.v > tgt) === (chg < 0) || Math.abs(chg) < 0.005;
-    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>Weight</h2>' +
-      '<button class="ib" data-act="wLog" aria-label="Log a weight">' + ICON.plus + '</button></div><div class="stats">' +
-      '<button class="wnow" data-act="wLog" data-k="' + tk + '">' + (last ? '<span>' + dLab(last.k) + '</span><b>' + kg(last.v) + ' <small>kg</small></b>' + (bmiTxt(last.v) ? '<em>' + bmiTxt(last.v) + '</em>' : '') : '<b>No weight yet</b>') +
-        '<i>' + (last && last.k === tk ? 'Tap to change today' : 'Tap to log today') + '</i></button>' +
-      (L.length ? '<div class="seg">' + [['week', 'Week'], ['month', 'Month'], ['year', 'Year']].map(function (r) { return '<button class="' + (wRange === r[0] ? 'on' : '') + '" data-act="wRange" data-v="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="tiles"><div class="tile"><span>' + (chg == null ? 'Change' : chg <= 0 ? 'Lost' : 'Gained') + ' · last ' + { week: '7 days', month: '30 days', year: 'year' }[wRange] + '</span><b class="' + (toward == null ? '' : toward ? 'up' : 'down') + '">' + (chg == null ? '–' : kg(Math.abs(chg)) + ' kg') + '</b>' + (chg != null ? '<em>from ' + kg(base.v) + ' on ' + dLab(base.k) + '</em>' : '<em>needs two readings</em>') + '</div>' +
-        '<div class="tile"><span>Target</span><b>' + (tgt ? (Math.abs(last.v - tgt) < 0.005 ? 'Reached' : kg(Math.abs(last.v - tgt)) + ' kg') : '–') + '</b><em>' + (tgt ? (Math.abs(last.v - tgt) < 0.005 ? kg(tgt) + ' kg' : (last.v > tgt ? 'to lose' : 'to gain') + ' · goal ' + kg(tgt)) : '<a data-act="wSetup">Set a target</a>') + '</em></div></div>' +
-      wChart(R, tgt, from, tk) +
-      '<section class="stc"><h4>Recent</h4>' + L.slice(-14).reverse().map(function (e, i, A) {
-        var prev = A[i + 1], d = prev ? e.v - prev.v : null;
-        return '<button class="wrow" data-act="wLog" data-k="' + e.k + '"><span>' + dLab(e.k) + '</span><b>' + kg(e.v) + '</b><em class="' + (d == null || Math.abs(d) < 0.005 ? '' : d < 0 ? 'dn' : 'upw') + '">' + (d == null ? '' : (d > 0 ? '+' : d < 0 ? '−' : '±') + kg(Math.abs(d))) + '</em></button>';
-      }).join('') + '</section>' : '') +
-      '<button class="mi wset" data-act="wSetup"><span>Height ' + (st.heightCm ? ftIn(st.heightCm) : 'not set') + ' · Target ' + (tgt ? kg(tgt) + ' kg' : 'none') + '</span><span class="small muted">Change</span></button></div>';
-    var y = sheet.scrollTop, inW = /^w(eight|log|set)$/.test(sheetOpen || '');
-    if (inW) { sheetOpen = 'weight'; sheet.className = 'sheet page'; sheet.innerHTML = html; scrim.hidden = true; sheet.scrollTop = keepY ? y : 0; } else showSheet('weight', html, 'page');
+  function wOrder() {
+    var w = S.d.settings.wW || {}, o = (w.o || []).filter(function (id) { return WG[id]; });
+    Object.keys(WG).forEach(function (id) { if (o.indexOf(id) < 0) o.push(id); }); return o;
   }
+  function wData() {   // the readings every widget uses: start day applied, then one per day if that switch is on
+    var st = S.d.settings, L = S.wList();
+    if (st.wStartOn && st.wStart) L = L.filter(function (e) { return e.d >= st.wStart; });
+    if (st.wOne === false) return L;
+    var out = [], at = {}, p = st.wPick || 'last';
+    L.forEach(function (e) {
+      if (!(e.d in at)) { at[e.d] = out.length; out.push(e); return; }
+      var b = out[at[e.d]]; if (p === 'last' || (p === 'min' ? e.v < b.v : e.v > b.v)) out[at[e.d]] = e;
+    });
+    return out;
+  }
+  function openWeight(keepY) {
+    var st = S.d.settings, L = wData(), all = S.wList(), tgt = st.wTarget, last = L[L.length - 1], first = L[0], tk = S.today();
+    var sdOn = !!(st.wStartOn && st.wStart), dir = tgt && last && tgt > last.v ? 1 : -1;   // +1 = aiming to gain
+    var good = function (c) { return c * dir > 0; }, cls = function (c) { return c == null || Math.abs(c) < 0.005 ? '' : good(c) ? 'gd' : 'bd'; }, sign = function (c) { return (c > 0 ? '+' : c < 0 ? '−' : '±') + kg(Math.abs(c)); };
+    var W = {
+      sum: function () {
+        if (!last) return '<button class="wnow" data-act="wLog"><b>No weight yet</b><i>Tap to log one</i></button>';
+        var chg = last.v - first.v, pr = tgt && first.v !== tgt ? Math.max(0, Math.min(1, (first.v - last.v) / (first.v - tgt))) : null, reached = tgt && Math.abs(last.v - tgt) < 0.005;
+        return '<button class="wbig" data-act="wLog"><b>' + kg(last.v) + '<small> kg</small></b><span>' + dLab(last.d) + (last.t ? ' · ' + hm12(last.t) : '') + (bmiTxt(last.v) ? ' · ' + bmiTxt(last.v) : '') + '</span></button>' +
+          '<div class="wsg"><span>Start <b>' + kg(first.v) + '</b></span><span>' + (tgt ? 'Goal <b>' + kg(tgt) + '</b>' : '<a data-act="wSetup">Set a goal</a>') + '</span></div>' +
+          (pr != null ? '<div class="wbar"><i style="width:' + Math.round(pr * 100) + '%"></i></div>' : '') +
+          '<div class="wtwo"><div><b class="' + (L.length > 1 ? (good(chg) ? 'gd' : chg ? 'bd' : '') : '') + '">' + (L.length > 1 ? sign(chg) + ' kg' : '–') + '</b><span>Since ' + (sdOn ? 'start day' : 'first reading') + '</span></div>' +
+          '<div><b>' + (tgt ? (reached ? 'Reached' : kg(Math.abs(last.v - tgt)) + ' kg') : '–') + '</b><span>' + (tgt && !reached ? (last.v > tgt ? 'To lose' : 'To gain') : 'To goal') + '</span></div></div>';
+      },
+      perf: function () {
+        if (L.length < 2) return '<p class="small muted" style="margin:0">Needs two readings.</p>';
+        var at = function (n) { var c = kAgo(last.d, n), b = null; L.forEach(function (e) { if (e.d <= c) b = e; }); return b; };
+        var rows = [['1 week', at(7)], ['4 weeks', at(28)], ['3 months', at(91)], [sdOn ? 'Since start' : 'All time', first]].map(function (r) { return [r[0], r[1] && r[1] !== last ? last.v - r[1].v : null]; });
+        var mx = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1] || 0); })) || 1;
+        return rows.map(function (r) {
+          var c = r[1], w = c == null ? 0 : Math.max(2, Math.abs(c) / mx * 46);
+          return '<div class="wpr"><span>' + r[0] + '</span><div class="wpt"><i class="' + cls(c) + '" style="' + (c > 0 ? 'left' : 'right') + ':50%;width:' + (cls(c) ? w : 0) + '%"></i></div><b class="' + cls(c) + '">' + (c == null ? '–' : sign(c)) + '</b></div>';
+        }).join('');
+      },
+      chart: function () {
+        var sp = { '1m': 30, '3m': 91, '6m': 182, '1y': 365 }[wRange], from = sp ? kAgo(tk, sp) : first ? first.d : tk;
+        var R = L.filter(function (e) { return e.d >= from; });
+        return '<div class="seg">' + [['all', 'All'], ['1m', '1M'], ['3m', '3M'], ['6m', '6M'], ['1y', '1Y']].map(function (r) { return '<button class="' + (wRange === r[0] ? 'on' : '') + '" data-act="wRange" data-v="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>' + wChart(R, tgt, from, tk);
+      },
+      log: function () {
+        if (!L.length) return '<p class="small muted" style="margin:0">Nothing logged' + (sdOn ? ' since the start day' : '') + ' yet.</p>';
+        return L.slice(-30).reverse().map(function (e, i, A) {
+          var p = A[i + 1], d = p ? e.v - p.v : null;
+          return '<button class="wrow" data-act="wLog" data-k="' + e.k + '"><span>' + dLab(e.d) + (e.t ? '<small>' + hm12(e.t) + '</small>' : '') + '</span><b>' + kg(e.v) + '</b><em class="' + (d == null || Math.abs(d) < 0.005 ? '' : good(d) ? 'dn' : 'upw') + '">' + (d == null ? '' : sign(d)) + '</em></button>';
+        }).join('') + (L.length > 30 ? '<p class="small muted" style="margin:8px 0 0">Latest 30 shown · the Trend chart covers them all.</p>' : '');
+      }
+    };
+    var off = (st.wW || {}).off || {}, one = st.wOne !== false, pick = st.wPick || 'last';
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>Weight</h2>' +
+      '<button class="ib' + (wEdit ? ' lit' : '') + '" data-act="wEditTg" aria-label="' + (wEdit ? 'Done editing' : 'Edit widgets') + '">' + (wEdit ? ICON.check : ICON.pen) + '</button>' +
+      '<button class="ib" data-act="wLog" aria-label="Log a weight">' + ICON.plus + '</button></div><div class="stats wst">' +
+      '<div class="wsd"><button class="wsdt" data-act="wSdPick">' + ICON.cal + '<span>' + (sdOn ? 'Since ' + dLong(st.wStart) + ' (start day)' : all.length ? 'All readings, from ' + dLong(all[0].d) : 'Start day') + '</span></button>' +
+        '<button class="flip" data-act="wSdTg" aria-label="Start day" aria-pressed="' + sdOn + '"><i class="tgl' + (sdOn ? ' on' : '') + '"></i></button></div>' +
+      (wEdit ? '<section class="stc wedc"><div class="frow"><label>One entry per day<br><span class="small muted">' + (one ? 'If you weigh more than once a day, this one counts:' : 'Off: every reading shows, with its time.') + '</span></label><button class="flip" data-act="wOneTg" aria-pressed="' + one + '"><i class="tgl' + (one ? ' on' : '') + '"></i></button></div>' +
+        (one ? '<div class="seg">' + [['last', 'Latest'], ['min', 'Smallest'], ['max', 'Highest']].map(function (r) { return '<button class="' + (pick === r[0] ? 'on' : '') + '" data-act="wPick" data-v="' + r[0] + '">' + r[1] + '</button>'; }).join('') + '</div>' : '') +
+        '<p class="small muted" style="margin:8px 0 0">Eye = show or hide a widget. Drag ⠿ to reorder. Tap ✓ when done.</p></section>' : '') +
+      '<div id="wgs">' + wOrder().map(function (id) {
+        if (off[id] && !wEdit) return '';
+        return '<section class="stc wg' + (off[id] ? ' woff' : '') + '" data-wg="' + id + '">' + (wEdit || id !== 'sum' ? '<div class="wgh"><h4>' + WG[id] + '</h4>' +
+          (wEdit ? '<button class="wgb" data-act="wEye" data-v="' + id + '" aria-label="' + (off[id] ? 'Show' : 'Hide') + '">' + (off[id] ? ICON.eyeOff : ICON.eye) + '</button><span class="wgb wgd" aria-label="Drag to reorder">⠿</span>' : '') + '</div>' : '') +
+          W[id]() + '</section>';
+      }).join('') + '</div>' +
+      '<button class="mi wset" data-act="wSetup"><span>Height ' + (st.heightCm ? ftIn(st.heightCm) : 'not set') + ' · Goal ' + (tgt ? kg(tgt) + ' kg' : 'none') + '</span><span class="small muted">Change</span></button></div>';
+    var y = sheet.scrollTop, inW = /^w(eight|log|set)$/.test(sheetOpen || '');
+    if (inW) { sheetOpen = 'weight'; sheet.className = 'sheet page'; sheet.innerHTML = html; scrim.hidden = true; sheet.scrollTop = keepY ? y : 0; } else { wEdit = false; showSheet('weight', html, 'page'); }
+  }
+  function wTs(e) { var p = e.d.split('-'), t = (e.t || '12:00').split(':'); return new Date(+p[0], +p[1] - 1, +p[2], +t[0], +t[1]).getTime(); }
   function wChart(R, tgt, from, tk) {
-    if (R.length < 2) return '<section class="stc"><p class="small muted" style="margin:0">The graph appears once there are two readings in this range.</p></section>';
-    var W = 340, H = 150, pl = 30, pr = 6, pt = 10, pb = 20;
+    if (R.length < 2) return '<p class="small muted" style="margin:6px 0 0">The graph appears once there are two readings in this range.</p>';
+    var W = 340, H = 160, pl = 30, pr = 6, pt = 10, pb = 20;
     var vs = R.map(function (e) { return e.v; }), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), spr = Math.max(0.5, hi - lo);
-    var tIn = tgt && tgt >= lo - spr && tgt <= hi + spr;   // a far target would squash the curve flat: note it instead
+    var tIn = tgt && tgt >= lo - spr && tgt <= hi + spr;   // a far goal would squash the curve flat: note it instead
     if (tIn) { lo = Math.min(lo, tgt); hi = Math.max(hi, tgt); }
     var pad = Math.max(0.3, (hi - lo) * 0.12); lo -= pad; hi += pad;
-    var t0 = new Date(from + 'T12:00:00').getTime(), t1 = new Date(tk + 'T12:00:00').getTime();
-    var X = function (k) { return pl + (new Date(k + 'T12:00:00').getTime() - t0) / (t1 - t0) * (W - pl - pr); }, Y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
-    var path = R.map(function (e, i) { return (i ? 'L' : 'M') + X(e.k).toFixed(1) + ' ' + Y(e.v).toFixed(1); }).join('');
-    var ticks = [lo + (hi - lo) * 0.15, (lo + hi) / 2, hi - (hi - lo) * 0.15];
-    return '<section class="stc"><svg viewBox="0 0 ' + W + ' ' + H + '" class="chart wch">' +
+    var t0 = new Date(from + 'T00:00:00').getTime(), t1 = Math.max(wTs(R[R.length - 1]), new Date(tk + 'T12:00:00').getTime()); if (t1 <= t0) t1 = t0 + 864e5;
+    var X = function (e) { return pl + (wTs(e) - t0) / (t1 - t0) * (W - pl - pr); }, Y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
+    var path = R.map(function (e, i) { return (i ? 'L' : 'M') + X(e).toFixed(1) + ' ' + Y(e.v).toFixed(1); }).join('');
+    var lastE = R[R.length - 1], ticks = [lo + (hi - lo) * 0.15, (lo + hi) / 2, hi - (hi - lo) * 0.15];
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart wch">' +
       ticks.map(function (v) { return '<line x1="' + pl + '" x2="' + W + '" y1="' + Y(v) + '" y2="' + Y(v) + '" class="gl"/><text x="' + (pl - 4) + '" y="' + (Y(v) + 3.5) + '" class="yl">' + v.toFixed(1) + '</text>'; }).join('') +
-      (tgt && !tIn ? '<text x="' + (W - 2) + '" y="' + (tgt < lo ? H - pb - 4 : pt + 8) + '" class="tlt">target ' + kg(tgt) + (tgt < lo ? ' ↓' : ' ↑') + '</text>' : '') +
-      (tIn ? '<line x1="' + pl + '" x2="' + W + '" y1="' + Y(tgt) + '" y2="' + Y(tgt) + '" class="tl"/><text x="' + (W - 2) + '" y="' + (Y(tgt) - 4) + '" class="tlt">target ' + kg(tgt) + '</text>' : '') +
-      '<path d="' + path + '" class="wl"/>' + (R.length <= 40 ? R.map(function (e) { return '<circle cx="' + X(e.k) + '" cy="' + Y(e.v) + '" r="2.6" class="wd"/>'; }).join('') : '') +
-      '<text x="' + pl + '" y="' + (H - 3) + '" class="cl" text-anchor="start">' + dLab(from) + '</text><text x="' + W + '" y="' + (H - 3) + '" class="cl" text-anchor="end">Today</text></svg></section>';
+      (tgt && !tIn ? '<text x="' + (W - 2) + '" y="' + (tgt < lo ? H - pb - 4 : pt + 8) + '" class="tlt">goal ' + kg(tgt) + (tgt < lo ? ' ↓' : ' ↑') + '</text>' : '') +
+      (tIn ? '<line x1="' + pl + '" x2="' + W + '" y1="' + Y(tgt) + '" y2="' + Y(tgt) + '" class="tl wgoal"/><text x="' + (W - 2) + '" y="' + (Y(tgt) - 4) + '" class="tlt wgt">goal ' + kg(tgt) + '</text>' : '') +
+      '<path d="' + path + '" class="wl"/>' + (R.length <= 40 ? R.map(function (e) { return '<circle cx="' + X(e) + '" cy="' + Y(e.v) + '" r="2.4" class="wd"/>'; }).join('') : '') +
+      '<circle cx="' + X(lastE) + '" cy="' + Y(lastE.v) + '" r="4.5" class="wd wlast"/>' +
+      '<text x="' + pl + '" y="' + (H - 3) + '" class="cl" text-anchor="start">' + dLab(from) + '</text><text x="' + W + '" y="' + (H - 3) + '" class="cl" text-anchor="end">' + dLab(lastE.d) + '</text></svg>';
   }
-  function wLog(k) {
-    var L = S.wList(), cur = (S.d.weights[k] || {}).v, last = L[L.length - 1], tk = S.today();
-    wDlg('wlog', '<h3>Weight</h3><label class="fl">Day<input type="date" id="wDate" value="' + k + '" max="' + tk + '"></label>' +
+  function nowHM() { var n = new Date(); return (n.getHours() < 10 ? '0' : '') + n.getHours() + ':' + (n.getMinutes() < 10 ? '0' : '') + n.getMinutes(); }
+  function wLog(key) {
+    var L = S.wList(), e = key ? L.filter(function (x) { return x.k === key; })[0] : null, last = L[L.length - 1], tk = S.today();
+    App._wk = e ? e.k : null;
+    wDlg('wlog', '<h3>' + (e ? 'Edit reading' : 'Log weight') + '</h3><div class="two"><label class="fl">Day<input type="date" id="wDate" value="' + (e ? e.d : tk) + '" max="' + tk + '"></label>' +
+      '<label class="fl">Time<input type="time" id="wTime" value="' + (e ? e.t : nowHM()) + '"></label></div>' +
       '<div class="numrow" style="margin-top:12px"><button class="btn step" data-act="wStep" data-d="-0.1" aria-label="Minus 0.1">−</button>' +
-      '<input id="wIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + (cur != null ? kg(cur) : last ? kg(last.v) : '') + '" placeholder="kg">' +
+      '<input id="wIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + (e ? kg(e.v) : last ? kg(last.v) : '') + '" placeholder="kg">' +
       '<button class="btn step" data-act="wStep" data-d="0.1" aria-label="Plus 0.1">+</button></div><p class="small muted" style="margin-top:6px">In kg, up to 2 decimals (e.g. 78.45). Tap the number to type.</p>' +
-      '<div class="row end">' + (cur != null ? '<button class="btn danger-o" data-act="wDel">Delete</button><span class="grow"></span>' : '') + '<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSave">Save</button></div>');
+      '<div class="row end">' + (e ? '<button class="btn danger-o" data-act="wDel">Delete</button><span class="grow"></span>' : '') + '<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSave">Save</button></div>');
     var inp = document.getElementById('wIn'); inp.addEventListener('focus', function () { inp.select(); });
-    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') actions.wSave(); });
-    document.getElementById('wDate').addEventListener('change', function () {   // switching day shows that day's reading
-      var v = (S.d.weights[this.value] || {}).v; if (v != null) inp.value = kg(v);
-    });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') actions.wSave(); });
   }
+  function wSdPick() {
+    var st = S.d.settings, L = S.wList();
+    wDlg('wset', '<h3>Start day</h3><label class="fl">Count readings from<input type="date" id="wSd" value="' + (st.wStart || (L.length ? L[0].d : S.today())) + '" max="' + S.today() + '"></label>' +
+      '<p class="small muted" style="margin-top:8px">With the switch on, Summary, Change over, Trend and Log only use readings from this day. Turn it off to see everything again.</p>' +
+      '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="wSdSave">Save</button></div>');
+  }
+  // Drag a widget by its ⠿ handle (edit mode)
+  var wd = null;
+  document.addEventListener('pointerdown', function (e) {
+    var h = e.target.closest('.wgd'); if (!h || !wEdit) return;
+    var sec = h.closest('.wg'); wd = { el: sec, grab: e.clientY - sec.getBoundingClientRect().top }; sec.classList.add('wdrag'); e.preventDefault();
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!wd) return; var el = wd.el, box = el.parentNode, want = e.clientY - wd.grab;
+    var top = function (c) { return box.getBoundingClientRect().top + c.offsetTop; };
+    var p = el.previousElementSibling, n = el.nextElementSibling;
+    if (p && want < top(p) + p.offsetHeight / 2) box.insertBefore(el, p);
+    else if (n && want + el.offsetHeight > top(n) + n.offsetHeight / 2) box.insertBefore(n, el);
+    var r = sheet.getBoundingClientRect(); if (e.clientY < r.top + 60) sheet.scrollTop -= 10; else if (e.clientY > r.bottom - 60) sheet.scrollTop += 10;
+    el.style.transform = 'translateY(' + (want - top(el)) + 'px)';
+  });
+  ['pointerup', 'pointercancel'].forEach(function (n) { document.addEventListener(n, function () {
+    if (!wd) return; var box = wd.el.parentNode; wd = null;
+    var o = [].map.call(box.querySelectorAll('.wg'), function (s) { return s.dataset.wg; });
+    var w = S.d.settings.wW = S.d.settings.wW || {}; w.o = o; S.saveSettings(); openWeight(true);
+  }); });
   // Height is entered and shown in feet + inches; it is still stored as heightCm (BMI, sync unchanged)
   function ftParts(cm) { var t = Math.round(cm / 2.54), f = Math.floor(t / 12); return [f, t - f * 12]; }
   function ftIn(cm) { var p = ftParts(cm); return p[0] + '′ ' + p[1] + '″'; }
@@ -1347,15 +1431,24 @@
     signInFull: function () { Sync.client = null; Sync.signIn(false); },
     signOut: function () { confirmBox('Sign out? Your habits stay safe in your Google Drive and come back when you sign in again. This phone’s copy is cleared.', 'Sign out', function () { Sync.signOut(); }); },
     wRange: function (el) { wRange = el.dataset.v; openWeight(true); },
-    wLog: function (el) { wLog(el.dataset.k || S.today()); },
+    wLog: function (el) { wLog(el.dataset.k || null); },
+    wEditTg: function () { wEdit = !wEdit; openWeight(true); },
+    wEye: function (el) { var w = S.d.settings.wW = S.d.settings.wW || {}, off = w.off = w.off || {}, id = el.dataset.v; off[id] = !off[id]; S.saveSettings(); openWeight(true); },
+    wOneTg: function () { S.d.settings.wOne = S.d.settings.wOne === false; S.saveSettings(); openWeight(true); },
+    wPick: function (el) { S.d.settings.wPick = el.dataset.v; S.saveSettings(); openWeight(true); },
+    wSdTg: function () { var st = S.d.settings; if (!st.wStart) return wSdPick(); st.wStartOn = !st.wStartOn; S.saveSettings(); openWeight(true); },
+    wSdPick: function () { wSdPick(); },
+    wSdSave: function () { var v = document.getElementById('wSd').value; if (!v) return App.toast('Pick a day'); S.d.settings.wStart = v; S.d.settings.wStartOn = true; S.saveSettings(); wBack(); },
     wStep: function (el) { var i = document.getElementById('wIn'), v = parseFloat((i.value || '0').replace(',', '.')) || 0; i.value = kg(Math.max(0, v + +el.dataset.d)); },
     wSave: function () {
-      var k = document.getElementById('wDate').value || S.today(), t = document.getElementById('wIn').value.replace(',', '.').trim(), v = parseFloat(t);
+      var d = document.getElementById('wDate').value || S.today(), tm = document.getElementById('wTime').value, t = document.getElementById('wIn').value.replace(',', '.').trim(), v = parseFloat(t);
       if (!(v > 0 && v < 500)) return App.toast('Enter your weight in kg');
-      if (k > S.today()) return App.toast('That day hasn’t come yet');
+      if (d > S.today()) return App.toast('That day hasn’t come yet');
+      var k = d + (tm ? 'T' + tm : '');
+      if (App._wk && App._wk !== k) S.wSet(App._wk, null);   // moved to another day or time
       S.wSet(k, v); wBack();
     },
-    wDel: function () { var k = document.getElementById('wDate').value; S.wSet(k, null); wBack(); App.toast('Deleted'); },
+    wDel: function () { if (App._wk) S.wSet(App._wk, null); wBack(); App.toast('Deleted'); },
     wSetup: function () { wSetup(); },
     wSetSave: function () {
       var fs = document.getElementById('wFt').value.trim(), is = document.getElementById('wIn2').value.trim(), t = parseFloat(document.getElementById('wT').value.replace(',', '.'));

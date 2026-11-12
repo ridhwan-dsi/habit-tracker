@@ -145,9 +145,9 @@
       var q = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
       var col = function (h) { var g = h.parent && byId[h.parent], n = (g ? g.name + ' › ' : '') + h.name; return n + (h.type === 'num' && h.unit ? ' (' + h.unit + ')' : '') + (h.archived ? ' [archived]' : ''); };
       var cols = H.filter(function (h) { return !H.some(function (x) { return x.parent === h.id; }); });   // a group has no value of its own
-      var E = S.d.entries, W = S.d.weights || {}, first = S.today();
+      var E = S.d.entries, W = S.wByDay(), first = S.today();
       Object.keys(E).forEach(function (k) { var d = k.slice(k.indexOf('|') + 1); if (d < first && (E[k].v != null || E[k].s)) first = d; });
-      Object.keys(W).forEach(function (d) { if (d < first && W[d].v != null) first = d; });
+      Object.keys(W).forEach(function (d) { if (d < first) first = d; });
       var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], rows = [['Date', 'Day'].concat(cols.map(col), ['Weight (kg)']).map(q).join(',')];
       var t = S.todayDate(), f = new Date(first + 'T12:00:00');
       for (var d = new Date(t); d >= f; d.setDate(d.getDate() - 1)) {
@@ -158,7 +158,7 @@
           if (e.v == null) return '';
           any = true; return h.type === 'yn' ? (e.v ? 1 : '') : e.v;
         });
-        var w = W[k] && W[k].v != null ? W[k].v : ''; if (w !== '') any = true;
+        var w = W[k] != null ? W[k] : ''; if (w !== '') any = true;
         if (any || k === S.today()) rows.push([k, WD[d.getDay()]].concat(cells, [w]).map(q).join(','));
       }
       return rows.join('\n');

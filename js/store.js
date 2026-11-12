@@ -154,7 +154,13 @@
 
     /* Merge remote into local: per record, newer u wins. Settings: newer su wins. */
     /* ---- SL 34 weight log: weights['YYYY-MM-DD'] = { v: kg|null, u } (null = deleted); height & target live in settings ---- */
-    wList: function () { var W = this.d.weights || {}; return Object.keys(W).filter(function (k) { return W[k].v != null; }).sort().map(function (k) { return { k: k, v: W[k].v }; }); },
+    // v5.8: several readings a day — key 'YYYY-MM-DDTHH:MM' (older readings: 'YYYY-MM-DD'); d = day, t = time ('' if none)
+    wList: function () { var W = this.d.weights || {}; return Object.keys(W).filter(function (k) { return W[k].v != null; }).sort().map(function (k) { return { k: k, d: k.slice(0, 10), t: k.slice(11, 16), v: W[k].v }; }); },
+    wByDay: function () {   // one value per day for the Sheet, using his Latest / Smallest / Highest choice
+      var p = this.d.settings.wPick || 'last', out = {};
+      this.wList().forEach(function (e) { var b = out[e.d]; if (b == null || p === 'last' || (p === 'min' ? e.v < b : e.v > b)) out[e.d] = e.v; });
+      return out;
+    },
     wSet: function (k, v) { this.d.weights[k] = { v: v == null ? null : Math.round(v * 100) / 100, u: Date.now() }; this.save(); },
 
     merge: function (r) {
