@@ -361,3 +361,31 @@ body.shw .rib { position:relative; z-index:12; }
 .shc { font-style:normal; font-size:11.5px; color:var(--muted); background:var(--card2); border-radius:10px; padding:1px 8px; }
 .shf { display:flex; justify-content:space-between; padding:10px 18px 4px; } .shn { padding:10px 18px; }
 .bdg.hid { background:#F2C14E; color:#2a1c02; }
+/* v5.15 Settings page: grouped cards, label + control rows, help text only when the Help flip is on */
+.sset { padding:0 14px 28px; }
+.sgh { margin:18px 4px 6px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:600; }
+.sg { background:var(--card); border-radius:14px; overflow:hidden; }
+.srw { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:50px; padding:9px 14px; border:0; background:none; color:var(--ink); font:inherit; font-size:15px; text-align:left; }
+button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
+.srw + .srw { border-top:1px solid var(--line); }
+.srw.col { flex-direction:column; align-items:stretch; gap:8px; padding:11px 14px; }
+.sl { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.sx, .ss { font-style:normal; font-size:12.5px; color:var(--muted); line-height:1.35; }
+.sv { color:var(--muted); font-size:14px; } .srw .chev { width:18px; height:18px; color:var(--dim); flex:none; margin-left:-6px; }
+.srw .tgl, .ptop .tgl { width:40px; height:24px; border-radius:12px; } .srw .tgl::after, .ptop .tgl::after { width:18px; height:18px; top:3px; left:3px; } .srw .tgl.on::after, .ptop .tgl.on::after { left:19px; }
+.sseg { background:var(--bg); } .sseg button { min-height:36px; font-size:13px; }
+.ptop .flip { font-size:13px; color:var(--muted); padding:6px 4px; }
+/* v5.15 Stats overview */
+.tile small { font-size:13px; font-weight:500; color:var(--muted); }
+.ovc { width:100%; height:96px; display:block; } .ovc .bp { fill:var(--pri); opacity:.45; } .ovc .bf { fill:var(--pri); } .ovc .gl { stroke:var(--line); stroke-dasharray:3 3; }
+.ovx { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:4px; }
+.ovw { display:grid; grid-template-columns:38px 1fr 44px; align-items:center; gap:8px; font-size:13px; padding:3px 0; } .ovw b { text-align:right; font-weight:600; }
+.ovh { display:grid; grid-template-columns:10px minmax(0,1.3fr) 1fr 56px; align-items:center; gap:10px; width:100%; border:0; background:none; color:var(--ink); font:inherit; text-align:left; padding:8px 0; cursor:pointer; }
+.ovh + .ovh { border-top:1px solid var(--line); }
+.ovh > i { width:10px; height:10px; border-radius:50%; }
+.ovn { font-size:14px; display:flex; flex-direction:column; min-width:0; } .ovn, .ovn em { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ovn em { font-style:normal; font-size:11.5px; color:var(--muted); }
+.ovb { height:8px; border-radius:4px; background:var(--line); overflow:hidden; } .ovb span { display:block; height:100%; border-radius:4px; }
+.ovh b { text-align:right; font-size:14px; display:flex; flex-direction:column; } .ovh b em { font-style:normal; font-size:11px; font-weight:500; }
+.ovh b em.up { color:var(--pri); } .ovh b em.down { color:var(--bad); }
+.sl .ver { align-self:flex-start; }
