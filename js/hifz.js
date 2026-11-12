@@ -43,6 +43,7 @@
   }
   window.HifzLink = {
     have: function () { return !!load(); },
+    all: function () { return load(); },   // { days: { 'YYYY-MM-DD': { pg, min } }, goal } — used by the dashboard
     day: function (k) { var c = load(); if (!c) return null; var x = c.days[k] || { pg: 0, min: 0 }; return { pg: x.pg, min: x.min, goal: c.goal }; },
     /* What a linked habit gets for day k: a number (measurable) or 1 (yes/no ticked); null = nothing from Hifz that day.
        link 'pg' = Qur'an pages read; 'hz' = memorisation minutes. Yes/no 'hz' ticks at Hifz's daily goal (5 min if no goal). */

@@ -2,8 +2,8 @@
    so the app always opens instantly and offline (never the browser's offline page). A new version
    arrives because the page calls reg.update() on launch → new sw.js installs the new files →
    takes over → page reloads once. Bump SHELL with every release (same number as js/config.js). */
-var SHELL = 'habits-shell-v5.12', ASSETS = 'habits-assets';
-var FILES = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/store.js', 'js/sync.js', 'js/demo.js', 'js/stats.js', 'js/prayer.js', 'js/hifz.js', 'js/app.js',
+var SHELL = 'habits-shell-v5.13', ASSETS = 'habits-assets';
+var FILES = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/store.js', 'js/sync.js', 'js/demo.js', 'js/stats.js', 'js/prayer.js', 'js/hifz.js', 'js/app.js', 'dashboard.html',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
@@ -21,7 +21,7 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET' || url.origin !== location.origin) return;   // Google APIs go straight to network
   if (url.pathname.endsWith('/sw.js')) return;
   e.respondWith(caches.open(SHELL).then(function (c) {
-    var key = req.mode === 'navigate' ? 'index.html' : req;
+    var key = req.mode === 'navigate' ? (/dashboard\.html$/.test(url.pathname) ? 'dashboard.html' : 'index.html') : req;
     return c.match(key, { ignoreSearch: true }).then(function (hit) {
       if (hit) return hit;
       return fetch(req).then(function (r) { if (r.ok && req.mode !== 'navigate') c.put(req, r.clone()); return r; })

@@ -1023,7 +1023,7 @@
     showSheet('menu', 
       (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Archived tabs</button>' : '') +
       (tabsMode() === 'off' ? '<button class="mi" data-act="tabsSheet">Tabs</button>' : '') +
-      (S.demo ? '' : '<button class="mi" data-act="starters">Add from examples</button>') +
+      (S.demo ? '' : '<button class="mi" data-act="starters">Add from examples</button><a class="mi" href="dashboard.html" style="text-decoration:none">Dashboard (all apps)</a>') +
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {

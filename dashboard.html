@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>My Dashboard</title>
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#121417">
+<style>
+/* SL 42 first cut: one dashboard across his apps, a tab per app. Reads each app's data from this browser
+   (Habits 'habits.v1', Hifz 'hifz.v2' — same github.io origin), so it opens instantly, offline, with no sign-in.
+   Each app keeps its own data fresh through its own sync; open an app once in this browser to bring its data here. */
+:root { --bg:#121417; --card:#1C1F24; --card2:#22262C; --ink:#E6E8EB; --muted:#9AA0A6; --dim:#272B31; --line:#2A2E35; --pri:#5BC48A; --pri2:#3A7D58; --bad:#E5685B; --grid:#262A30; }
+[data-theme=light] { --bg:#F3F4F6; --card:#fff; --card2:#F7F8FA; --ink:#1B1F24; --muted:#5F6670; --dim:#E3E6EA; --line:#E1E4E8; --pri:#1E8F55; --pri2:#A6D9BC; --bad:#C8443A; --grid:#EEF0F2; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+.wrap { max-width:1200px; margin:0 auto; padding:16px; }
+header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+header img { width:30px; height:30px; }
+h1 { font-size:22px; margin:0; font-weight:700; }
+.date { color:var(--muted); font-size:13px; }
+.sp { flex:1; }
+nav.tabs { display:flex; gap:6px; }
+nav.tabs button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:7px 14px; border-radius:18px; cursor:pointer; }
+nav.tabs button.on { background:var(--pri); border-color:var(--pri); color:#0B1A11; font-weight:600; }
+a.open { color:var(--muted); font-size:13px; text-decoration:none; border:1px solid var(--line); padding:6px 10px; border-radius:8px; }
+a.open:hover { color:var(--ink); }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:14px; }
+.tile { background:var(--card); border-radius:12px; padding:14px 16px; }
+.tile .k { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+.tile .v { font-size:28px; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }
+.tile .s { color:var(--muted); font-size:12.5px; margin-top:2px; }
+.up { color:var(--pri); } .down { color:var(--bad); }
+.cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:12px; }
+.card { background:var(--card); border-radius:12px; padding:14px 16px; margin-bottom:12px; min-width:0; }
+.card h3 { margin:0 0 2px; font-size:14px; }
+.card .sub { color:var(--muted); font-size:12.5px; margin-bottom:10px; }
+svg text { fill:var(--muted); font-size:11px; font-family:inherit; }
+.empty { background:var(--card); border-radius:12px; padding:28px; color:var(--muted); text-align:center; }
+/* habit heat grid */
+.heat { overflow-x:auto; }
+.heat table { border-collapse:separate; border-spacing:2px; }
+.heat th { font-weight:500; color:var(--muted); font-size:11px; text-align:center; padding:0 0 4px; min-width:18px; }
+.heat td.nm { white-space:nowrap; padding-right:10px; font-size:13px; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+.heat td.nm.sb { padding-left:16px; color:var(--muted); }
+.heat td.c { width:18px; height:18px; border-radius:4px; background:var(--dim); }
+.heat td.c.d { background:var(--pri); } .heat td.c.p { background:var(--pri2); } .heat td.c.x { background:var(--bad); } .heat td.c.o { background:transparent; outline:1px dashed var(--line); outline-offset:-3px; }
+.heat td.n { color:var(--muted); font-size:12px; padding-left:10px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-top:8px; }
+.legend i { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-2px; margin-right:5px; }
+#tip { position:fixed; pointer-events:none; background:var(--card2); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:12px; box-shadow:0 6px 20px rgba(0,0,0,.35); display:none; z-index:9; white-space:nowrap; }
+@media (max-width:520px) { .cols { grid-template-columns:1fr; } .tile .v { font-size:24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="icons/icon-192.png" alt="">
+    <h1>Dashboard</h1><span class="date" id="date"></span>
+    <span class="sp"></span>
+    <nav class="tabs" id="tabs"></nav>
+    <a class="open" href="./">Open Habits</a>
+  </header>
+  <main id="main"></main>
+</div>
+<div id="tip"></div>
+<script src="js/hifz.js"></script>
+<script>
+(function () {
+  var DAY = 864e5, pad = function (n) { return String(n).padStart(2, '0'); };
+  var key = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  var H = null; try { H = JSON.parse(localStorage.getItem('habits.v1')); } catch (e) {}
+  var Z = window.HifzLink && HifzLink.all();
+  document.documentElement.dataset.theme = H && H.settings && H.settings.theme === 'light' ? 'light' : 'dark';   // follows Habits' theme
+  var ext = H && H.settings && H.settings.extendH || 0;
+  var t0 = new Date(Date.now() - ext * 3600000); t0.setHours(12, 0, 0, 0);
+  function days(n) { var o = []; for (var i = n - 1; i >= 0; i--) { var x = new Date(t0); x.setDate(t0.getDate() - i); o.push({ k: key(x), dt: x }); } return o; }   // oldest first
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var num = function (n) { return Math.round(n * 10) / 10; };
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  document.getElementById('date').textContent = t0.toDateString();
+
+  /* ---- Habits: done / partial / lapse per day ---- */
+  var live = function (o) { return Object.keys(o || {}).map(function (k) { return o[k]; }).filter(function (x) { return x && !x.d; }); };
+  var habits = H ? live(H.habits).filter(function (h) { return !h.archived; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); }) : [];
+  var byId = {}; habits.forEach(function (h) { byId[h.id] = h; });
+  var groups = habits.filter(function (h) { return h.isGroup || habits.some(function (x) { return x.parent === h.id; }); });
+  var isGrp = function (h) { return groups.indexOf(h) >= 0; };
+  var val = function (h, k) { var e = H.entries[h.id + '|' + k]; return e && e.s !== 1 && e.v != null ? e.v : null; };
+  var skip = function (h, k) { var e = H.entries[h.id + '|' + k]; return !!(e && e.s === 1); };
+  // 'd' done, 'p' partly, 'x' lapse (bad habit), 'o' skipped, '' nothing
+  function state(h, k) {
+    if (skip(h, k)) return 'o';
+    var v = val(h, k);
+    if (h.kind === 'bad') { if (v == null) return ''; return h.type === 'num' ? (v > (h.target || 0) ? 'x' : 'd') : (v > 0 ? 'x' : ''); }
+    if (v == null) return '';
+    if (h.type !== 'num') return v > 0 ? 'd' : '';
+    if (h.tt === 'max') return v <= h.target ? 'd' : 'p';
+    return v >= (h.target || 1) ? 'd' : v > 0 ? 'p' : '';
+  }
+  function grpState(g, k) {   // a group's result from its sub-habits: count (N done) or sum against its target
+    var ss = habits.filter(function (x) { return x.parent === g.id; }), a = g.agg || { t: 'count', n: 1 };
+    if (a.t === 'sum') { var s = 0; ss.forEach(function (x) { s += val(x, k) || 0; }); return s >= (g.target || 1) ? 'd' : s > 0 ? 'p' : ''; }
+    var n = ss.filter(function (x) { return state(x, k) === 'd'; }).length, need = Math.min(a.n || 1, ss.length || 1);
+    return n >= need ? 'd' : n > 0 ? 'p' : '';
+  }
+  var st = function (h, k) { return isGrp(h) ? grpState(h, k) : state(h, k); };
+  var daily = function (h) { return !h.freq || h.freq.t === 'day'; };
+  var tops = habits.filter(function (h) { return !h.parent || !byId[h.parent]; });
+  var goodTops = tops.filter(function (h) { return h.kind !== 'bad'; });
+  function doneOn(k) { return goodTops.filter(function (h) { return st(h, k) === 'd'; }).length; }
+  function dailyRate(ds) {   // share of daily good habits done, across the given days
+    var hs = goodTops.filter(daily), due = 0, ok = 0;
+    ds.forEach(function (d) { hs.forEach(function (h) { var s = st(h, d.k); if (s === 'o') return; due++; if (s === 'd') ok++; }); });
+    return due ? Math.round(ok * 100 / due) : null;
+  }
+
+  /* ---- Weight ---- */
+  var W = H && H.weights || {}, wl = Object.keys(W).filter(function (k) { return W[k].v != null; }).sort().map(function (k) { return { d: k.slice(0, 10), v: W[k].v }; });
+  var wDay = {}; wl.forEach(function (e) { wDay[e.d] = e.v; });   // latest reading of each day
+  var wTarget = H && H.settings && H.settings.wTarget;
+
+  /* ---- Hifz ---- */
+  var zd = Z ? Z.days : {}, zg = Z ? Z.goal : 0;
+  var zsum = function (ds, f) { return ds.reduce(function (s, d) { return s + ((zd[d.k] || {})[f] || 0); }, 0); };
+
+  /* ---- little charts (inline SVG; hover via data-tip) ---- */
+  function bars(ds, get, opt) {
+    opt = opt || {}; var w = 640, h = 170, l = 30, b = 22, r = 6, iw = w - l - r, ih = h - b - 8;
+    var vs = ds.map(function (d) { return get(d.k) || 0; }), mx = Math.max(opt.line || 0, 1, Math.max.apply(null, vs));
+    var step = mx <= 5 ? 1 : mx <= 12 ? 2 : mx <= 30 ? 5 : mx <= 60 ? 10 : mx <= 150 ? 25 : 50; mx = Math.ceil(mx / step) * step;
+    var y = function (v) { return 8 + ih - v / mx * ih; }, bw = iw / ds.length, o = '';
+    for (var g = 0; g <= mx; g += step) o += '<line x1="' + l + '" x2="' + (w - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--grid)"/><text x="' + (l - 6) + '" y="' + (y(g) + 4) + '" text-anchor="end">' + g + '</text>';
+    ds.forEach(function (d, i) {
+      var v = vs[i], x = l + i * bw + Math.max(1, bw * .14), bwid = Math.max(2, bw * .72), top = y(v), hh = 8 + ih - top;
+      if (v > 0) o += '<path d="M' + x + ',' + (8 + ih) + 'v' + (-Math.max(0, hh - 3)) + 'q0,-3 3,-3h' + Math.max(0, bwid - 6) + 'q3,0 3,3v' + Math.max(0, hh - 3) + 'z" fill="' + (opt.color ? opt.color(v) : 'var(--pri)') + '"/>';
+      o += '<rect x="' + (l + i * bw) + '" y="8" width="' + bw + '" height="' + ih + '" fill="transparent" data-tip="' + esc(d.dt.getDate() + ' ' + MON[d.dt.getMonth()] + ' · ' + num(v) + ' ' + (opt.unit || '')) + '"/>';
+      var ev = Math.ceil(ds.length / 8); if ((i % ev === 0 && ds.length - 1 - i >= ev * .6) || i === ds.length - 1) o += '<text x="' + (i === ds.length - 1 ? w - r : l + i * bw + bw / 2) + '" y="' + (h - 6) + '" text-anchor="' + (i === ds.length - 1 ? 'end' : 'middle') + '">' + d.dt.getDate() + ' ' + MON[d.dt.getMonth()] + '</text>';
+    });
+    if (opt.line) o += '<line x1="' + l + '" x2="' + (w - r) + '" y1="' + y(opt.line) + '" y2="' + y(opt.line) + '" stroke="var(--ink)" stroke-dasharray="4 4" stroke-width="1.5" opacity=".6"/><text x="' + (w - r) + '" y="' + (y(opt.line) - 4) + '" text-anchor="end">' + esc(opt.lineLabel || '') + '</text>';
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="' + esc(opt.label || '') + '">' + o + '</svg>';
+  }
+  function line(pts, opt) {   // pts: [{k, dt, v}] (v may be null), opt.target
+    var w = 640, h = 190, l = 38, b = 22, r = 8, iw = w - l - r, ih = h - b - 10, have = pts.filter(function (p) { return p.v != null; });
+    if (have.length < 2) return '<div class="sub">Not enough readings yet.</div>';
+    var vs = have.map(function (p) { return p.v; }); if (opt.target) vs.push(opt.target);
+    var lo = Math.floor(Math.min.apply(null, vs) - .5), hi = Math.ceil(Math.max.apply(null, vs) + .5), sx = iw / (pts.length - 1);
+    var y = function (v) { return 10 + ih - (v - lo) / (hi - lo) * ih; }, o = '', st0 = Math.max(1, Math.round((hi - lo) / 4));
+    for (var g = lo; g <= hi; g += st0) o += '<line x1="' + l + '" x2="' + (w - r) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="var(--grid)"/><text x="' + (l - 6) + '" y="' + (y(g) + 4) + '" text-anchor="end">' + g + '</text>';
+    if (opt.target) o += '<line x1="' + l + '" x2="' + (w - r) + '" y1="' + y(opt.target) + '" y2="' + y(opt.target) + '" stroke="var(--bad)" stroke-dasharray="5 4" stroke-width="1.5"/><text x="' + (w - r) + '" y="' + (y(opt.target) - 5) + '" text-anchor="end">goal ' + opt.target + '</text>';
+    var d = ''; pts.forEach(function (p, i) { if (p.v != null) d += (d ? 'L' : 'M') + (l + i * sx).toFixed(1) + ',' + y(p.v).toFixed(1); });
+    o += '<path d="' + d + '" fill="none" stroke="var(--pri)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    pts.forEach(function (p, i) {
+      var ev = Math.ceil(pts.length / 6); if ((i % ev === 0 && pts.length - 1 - i >= ev * .6) || i === pts.length - 1) o += '<text x="' + (l + i * sx) + '" y="' + (h - 6) + '" text-anchor="' + (i === pts.length - 1 ? 'end' : 'middle') + '">' + p.dt.getDate() + ' ' + MON[p.dt.getMonth()] + '</text>';
+      if (p.v != null) o += '<circle cx="' + (l + i * sx) + '" cy="' + y(p.v) + '" r="7" fill="transparent" data-tip="' + esc(p.dt.getDate() + ' ' + MON[p.dt.getMonth()] + ' · ' + p.v + ' kg') + '"/>';
+    });
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="Weight">' + o + '</svg>';
+  }
+  var tile = function (k, v, s) { return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + (s || '&nbsp;') + '</div></div>'; };
+  var chg = function (a, b, unit, lowGood) {
+    if (b == null) return ''; var d = num(a - b); if (!d) return 'same as before';
+    var good = lowGood ? d < 0 : d > 0; return '<span class="' + (good ? 'up' : 'down') + '">' + (d > 0 ? '+' : '−') + Math.abs(d) + (unit || '') + '</span>';
+  };
+
+  /* ---- views ---- */
+  var d7 = days(7), d14 = days(14), p7 = d14.slice(0, 7), d30 = days(30), d60 = days(60), d90 = days(90);
+  function noHabits() { return '<div class="empty">No Habits data in this browser yet. Open <a href="./" style="color:var(--pri)">Habits</a> here once and let it sync, then come back.</div>'; }
+  function noHifz() { return '<div class="empty">No Hifz data in this browser yet. Open the Hifz app here once and let it sync, then come back.</div>'; }
+  var V = {
+    Overview: function () {
+      var o = '<div class="tiles">';
+      if (H) {
+        var tk = days(1)[0].k, due = goodTops.filter(daily), dn = due.filter(function (h) { return st(h, tk) === 'd'; }).length;
+        var r7 = dailyRate(d7), rp = dailyRate(p7);
+        o += tile('Habits today', dn + '<span style="font-size:16px;color:var(--muted)"> / ' + due.length + '</span>', 'daily habits done');
+        o += tile('Last 7 days', r7 == null ? '–' : r7 + '%', r7 != null && rp != null ? chg(r7, rp, ' pts') + ' vs the week before' : 'of daily habits done');
+      }
+      if (Z) {
+        var pw = zsum(d7, 'pg'), pp = zsum(p7, 'pg'), mw = zsum(d7, 'min'), mp = zsum(p7, 'min');
+        o += tile('Qur’an pages · 7 days', pw, chg(pw, pp) + ' vs the week before');
+        o += tile('Hifz minutes · 7 days', mw, chg(mw, mp) + ' vs the week before');
+      }
+      if (wl.length) {
+        var last = wl[wl.length - 1], back = null; for (var i = wl.length - 1; i >= 0; i--) if (wl[i].d <= d30[0].k) { back = wl[i].v; break; }
+        o += tile('Weight', last.v + '<span style="font-size:16px;color:var(--muted)"> kg</span>', back != null ? chg(last.v, back, ' kg', !wTarget || wTarget < last.v) + ' in 30 days' : '');
+      }
+      o += '</div>';
+      if (!H && !Z) return o + noHabits();
+      o += '<div class="cols">';
+      if (H) o += '<div class="card"><h3>Habits done per day</h3><div class="sub">Good habits (and groups) done, last 30 days</div>' + bars(d30, doneOn, { unit: 'done', label: 'Habits done per day' }) + '</div>';
+      if (Z) o += '<div class="card"><h3>Qur’an pages read</h3><div class="sub">All readings in Hifz, last 30 days</div>' + bars(d30, function (k) { return (zd[k] || {}).pg; }, { unit: 'pages', label: 'Pages read per day' }) + '</div>';
+      return o + '</div>';
+    },
+    Habits: function () {
+      if (!H) return noHabits();
+      var ds = d30, rows = [];
+      tops.forEach(function (h) { rows.push([h, false]); if (isGrp(h)) habits.filter(function (x) { return x.parent === h.id; }).forEach(function (x) { rows.push([x, true]); }); });
+      var head = '<tr><th></th>' + ds.map(function (d, i) { return '<th>' + (i % 2 ? '' : d.dt.getDate()) + '</th>'; }).join('') + '<th></th></tr>';
+      var body = rows.map(function (r) {
+        var h = r[0], n = 0, cells = ds.map(function (d) {
+          var s = st(h, d.k); if (s === (h.kind === 'bad' ? 'x' : 'd')) n++;
+          var v = val(h, d.k), lab = { d: h.kind === 'bad' ? 'within limit' : 'done', p: 'partly', x: h.kind === 'bad' ? 'slipped' : '', o: 'skipped', '': h.kind === 'bad' ? 'clean' : 'not done' }[s];
+          return '<td class="c ' + (s || '') + '" data-tip="' + esc(h.name + ' · ' + d.dt.getDate() + ' ' + MON[d.dt.getMonth()] + ' · ' + lab + (v != null && h.type === 'num' ? ' (' + num(v) + ' ' + (h.unit || '') + ')' : '')) + '"></td>';
+        }).join('');
+        return '<tr><td class="nm' + (r[1] ? ' sb' : '') + '" title="' + esc(h.name) + '"><span style="color:' + esc(h.color || 'inherit') + '">' + esc(h.name) + '</span></td>' + cells +
+          '<td class="n">' + (h.kind === 'bad' ? n + (n === 1 ? ' slip' : ' slips') : daily(h) ? n + ' / 30' : n + (n === 1 ? ' time' : ' times')) + '</td></tr>';
+      }).join('');
+      var o = '<div class="card"><h3>Last 30 days</h3><div class="sub">Each square is a day, oldest on the left. Hover for details.</div><div class="heat"><table>' + head + body + '</table></div>' +
+        '<div class="legend"><span><i style="background:var(--pri)"></i>Done</span><span><i style="background:var(--pri2)"></i>Partly</span><span><i style="background:var(--bad)"></i>Bad habit: slipped</span><span><i style="background:var(--dim)"></i>Not done / clean</span></div></div>';
+      o += '<div class="cols"><div class="card"><h3>Daily habits done</h3><div class="sub">Share of daily good habits done each week, last 8 weeks</div>' +
+        bars(Array.apply(null, Array(8)).map(function (_, i) { var ds7 = days(56).slice(i * 7, i * 7 + 7); return { k: i, dt: ds7[0].dt, ds: ds7 }; }), function (i) { var ds7 = days(56).slice(i * 7, i * 7 + 7); return dailyRate(ds7) || 0; }, { unit: '% that week', label: 'Weekly completion' }) + '</div>';
+      if (wl.length) o += '<div class="card"><h3>Weight</h3><div class="sub">Last 90 days' + (wTarget ? ', goal dashed' : '') + '</div>' + line(d90.map(function (d) { return { k: d.k, dt: d.dt, v: wDay[d.k] != null ? wDay[d.k] : null }; }), { target: wTarget }) + '</div>';
+      return o + '</div>';
+    },
+    Hifz: function () {
+      if (!Z) return noHifz();
+      var now = t0, mk = key(now).slice(0, 7), pm = new Date(now.getFullYear(), now.getMonth() - 1, 15), pk = key(pm).slice(0, 7), dayN = now.getDate();
+      var m = { pg: 0, min: 0 }, p = { pg: 0, min: 0 }, pSame = { pg: 0, min: 0 };
+      Object.keys(zd).forEach(function (k) {
+        var x = zd[k]; if (k.slice(0, 7) === mk) { m.pg += x.pg; m.min += x.min; }
+        if (k.slice(0, 7) === pk) { p.pg += x.pg; p.min += x.min; if (+k.slice(8) <= dayN) { pSame.pg += x.pg; pSame.min += x.min; } }
+      });
+      var goalDays = zg ? d30.filter(function (d) { return ((zd[d.k] || {}).min || 0) >= zg; }).length : null;
+      var o = '<div class="tiles">' + tile('Pages this month', m.pg, chg(m.pg, pSame.pg) + ' vs the same days last month') + tile('Pages last month', p.pg, MON[pm.getMonth()]) +
+        tile('Hifz minutes this month', m.min, chg(m.min, pSame.min) + ' vs the same days last month') +
+        (zg ? tile('Goal days · 30', goalDays, 'days with ' + zg + '+ min') : '') + '</div>';
+      o += '<div class="cols"><div class="card"><h3>Qur’an pages read per day</h3><div class="sub">All readings, last 60 days</div>' + bars(d60, function (k) { return (zd[k] || {}).pg; }, { unit: 'pages', label: 'Pages read' }) + '</div>';
+      o += '<div class="card"><h3>Hifz minutes per day</h3><div class="sub">Memorisation stopwatch, last 60 days' + (zg ? '; daily goal dashed, days below it lighter' : '') + '</div>' +
+        bars(d60, function (k) { return (zd[k] || {}).min; }, { unit: 'min', line: zg, lineLabel: zg ? 'goal ' + zg + ' min' : '', label: 'Hifz minutes', color: zg ? function (v) { return v >= zg ? 'var(--pri)' : 'var(--pri2)'; } : null }) + '</div></div>';
+      return o;
+    }
+  };
+  var cur = 'Overview'; try { cur = sessionStorage.getItem('dash.tab') || cur; } catch (e) {}
+  function draw() {
+    document.getElementById('tabs').innerHTML = Object.keys(V).map(function (n) { return '<button class="' + (n === cur ? 'on' : '') + '" data-t="' + n + '">' + n + '</button>'; }).join('');
+    document.getElementById('main').innerHTML = V[cur]();
+  }
+  document.getElementById('tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-t]'); if (!b) return; cur = b.dataset.t; try { sessionStorage.setItem('dash.tab', cur); } catch (er) {} draw(); });
+  var tip = document.getElementById('tip');
+  document.addEventListener('mousemove', function (e) {
+    var t = e.target.closest && e.target.closest('[data-tip]');
+    if (!t) { tip.style.display = 'none'; return; }
+    tip.textContent = t.getAttribute('data-tip'); tip.style.display = 'block';
+    var x = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8); tip.style.left = x + 'px'; tip.style.top = (e.clientY + 14) + 'px';
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
