@@ -59,3 +59,58 @@
     }
   };
 })();
+
+/* SL 31: Start from examples — the demo's habits as starters (plus a few more). Ticked ones are created as real
+   habits with no history; a starter's tab (Weekly / Monthly) is reused if he has a tab of that name, else created. */
+(function () {
+  var Y = '#9BE29B';
+  window.Starters = [
+    { sec: 'Daily', items: [
+      { k: 'walk', name: 'Morning walk', note: 'km · at least 3', h: { color: '#7FB3FF', type: 'num', unit: 'km', target: 3, step: 1 } },
+      { k: 'read', name: 'Read', note: 'pages · at least 10', h: { color: '#B39DFF', type: 'num', unit: 'pages', target: 10, step: 5 } },
+      { k: 'quran', name: 'Qur’an pages', note: 'pages · at least 5', h: { color: Y, type: 'num', unit: 'pages', target: 5, step: 1 } },
+      { k: 'water', name: 'Drink water', note: 'glasses · at least 8', h: { color: '#5FD3E0', type: 'num', unit: 'glasses', target: 8, step: 1 } },
+      { k: 'salah', name: 'Salah in Masjid', note: 'group · Fajr to Isha, done at 5', h: { color: Y, isGroup: true, agg: { t: 'count', n: 5, prog: true } },
+        subs: ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map(function (n) { return { name: n, h: { color: Y } }; }) },
+      { k: 'workout', name: 'Workout', note: 'group · push-ups, plank, stretch; done at 2', h: { color: '#FFB86B', isGroup: true, agg: { t: 'count', n: 2, prog: true } },
+        subs: [{ name: 'Push-ups', h: { type: 'num', unit: 'reps', target: 45, step: 15 } }, { name: 'Plank', h: {} }, { name: 'Stretch', h: {} }] },
+      { k: 'reflect', name: 'Evening reflection', note: 'shows from 7 pm', h: { color: Y, win: { from: '19:00', to: '' } } },
+      { k: 'sugar', name: 'No sugar', note: 'bad habit · tick when you slip', h: { color: '#FF7A7A', kind: 'bad' } },
+      { k: 'social', name: 'Social media', note: 'bad habit · at most 30 min', h: { color: '#FF7A7A', kind: 'bad', type: 'num', unit: 'min', target: 30, tt: 'max', step: 10 } }
+    ] },
+    { sec: 'Weekly', tab: ['Weekly', 'Wk'], items: [
+      { k: 'family', name: 'Call family', note: '2 times a week', h: { color: '#F5A3D0', freq: { t: 'week', n: 2, days: [] } } },
+      { k: 'kahf', name: 'Surah Al-Kahf', note: 'every Friday', h: { color: Y, freq: { t: 'rep', n: 1, ev: 1, u: 'w', days: [5], from: 'sch' } } },
+      { k: 'plan', name: 'Plan the week', note: 'every Saturday · stays 3 days if missed', h: { color: '#7FB3FF', freq: { t: 'rep', n: 1, ev: 1, u: 'w', days: [6], from: 'sch' }, miss: { t: 'stay', keep: 3 } } }
+    ] },
+    { sec: 'Monthly', tab: ['Monthly', 'Mo'], items: [
+      { k: 'rent', name: 'Pay rent', note: 'the 1st · stays until paid', h: { color: '#F2A65A', freq: { t: 'rep', n: 1, ev: 1, u: 'm', md: 1, from: 'sch' }, miss: { t: 'stay', keep: null } } },
+      { k: 'oil', name: 'Car oil change', note: 'every 90 days after it’s done', h: { color: '#C4A49A', freq: { t: 'rep', n: 1, ev: 90, u: 'd', from: 'done' }, miss: { t: 'stay', keep: null } } }
+    ] }
+  ];
+  // Create the ticked starters (keys) as real habits. Returns how many top-level habits were made.
+  window.Starters.add = function (keys, intoTab) {
+    var S = window.Store, today = S.today(), made = 0, want = {};
+    keys.forEach(function (k) { want[k] = 1; });
+    var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+    window.Starters.forEach(function (sec) {
+      var its = sec.items.filter(function (it) { return want[it.k]; }); if (!its.length) return;
+      var tab = intoTab || null;
+      if (!tab && sec.tab) {
+        var ex = S.tabs().filter(function (t) { return t.name.toLowerCase() === sec.tab[0].toLowerCase(); })[0];
+        tab = (ex || S.putTab({ name: sec.tab[0], short: sec.tab[1] })).id;
+      }
+      its.forEach(function (it) {
+        var h = Object.assign(S.newHabit(), clone(it.h), { name: it.name, tab: tab });
+        if (h.freq && h.freq.t === 'rep') h.freq.a = today;
+        if (h.type === 'num' && h.tt == null) h.tt = 'min';
+        S.putHabit(h); made++;
+        (it.subs || []).forEach(function (s) {
+          var x = Object.assign(S.newHabit(), { color: h.color }, clone(s.h), { name: s.name, parent: h.id, tab: tab });
+          S.putHabit(x);
+        });
+      });
+    });
+    return made;
+  };
+})();

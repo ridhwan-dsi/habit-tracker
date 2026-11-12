@@ -346,7 +346,7 @@
         (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div><div class="swp" id="swp"></div></div>'
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
           : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (nd ? '<p class="small">' + nd + ' repeat' + (nd > 1 ? 's' : '') + ' not due today — Filter shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
-          : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
+          : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="starters">Start from examples</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       root.classList.toggle('sublines', f.subLines !== false);
       root.classList.toggle('noscr', f.hScroll === false);
       root.classList.toggle('nofrz', f.freezeToday === false);
@@ -999,12 +999,31 @@
     App.render(true); App.toast(on ? 'Demo data on' : 'Your own habits are back');
   }
 
+  /* ---- SL 31: Start from examples — tick starter habits, they're created with no history ---- */
+  var stSel = {};
+  function openStarters(again) {
+    var have = {}; S.habits().forEach(function (h) { have[h.name.toLowerCase()] = 1; });
+    var n = Object.keys(stSel).length;
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>Start from examples</h2>' +
+      '<button class="btn pri sm" data-act="stAdd"' + (n ? '' : ' disabled') + '>Add' + (n ? ' ' + n : '') + '</button></div>' +
+      '<p class="small muted" style="padding:0 18px">Tick the ones you want. They start empty — no past days — and you can edit anything afterwards.</p>' +
+      Starters.map(function (sec) {
+        return '<h4 style="padding:0 18px">' + sec.sec + (sec.tab ? ' <span class="small muted">· goes in the “' + sec.tab[0] + '” tab</span>' : '') + '</h4>' + sec.items.map(function (it) {
+          var got = have[it.name.toLowerCase()], on = !!stSel[it.k];
+          return '<button class="mi tg" data-act="stTg" data-k="' + it.k + '"' + (got ? ' disabled style="opacity:.5"' : '') + '><span><span style="color:' + it.h.color + '">' + esc(it.name) + '</span><br><span class="small muted">' +
+            (got ? 'already in your list' : esc(it.note)) + '</span></span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>';
+        }).join('');
+      }).join('') + '<div style="height:24px"></div>';
+    if (again && sheetOpen === 'starters') { var y = sheet.scrollTop; sheet.innerHTML = html; sheet.scrollTop = y; } else showSheet('starters', html, 'page');
+  }
+
   /* ---- Settings & menu ---- */
   function openMenu() {
     var g = S.habits().some(isGroup);
     showSheet('menu', 
       (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Archived tabs</button>' : '') +
       (tabsMode() === 'off' ? '<button class="mi" data-act="tabsSheet">Tabs</button>' : '') +
+      (S.demo ? '' : '<button class="mi" data-act="starters">Add from examples</button>') +
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {
@@ -1431,6 +1450,12 @@
     menu: openMenu,
     settings: function () { closeSheet(openSettings); },
     demoOn: function () { setDemo(true); },
+    starters: function () { stSel = {}; if (sheetOpen) closeSheet(function () { openStarters(); }); else openStarters(); },
+    stTg: function (el) { var k = el.dataset.k; if (stSel[k]) delete stSel[k]; else stSel[k] = 1; openStarters(true); },
+    stAdd: function () {
+      var keys = Object.keys(stSel); if (!keys.length) return;
+      closeSheet(function () { var n = Starters.add(keys); stSel = {}; S.d.ui.view = 'all'; App.render(); App.toast(n + ' habit' + (n > 1 ? 's' : '') + ' added'); });
+    },
     demoOff: function () { setDemo(false); },
     weight: function () { openWeight(); },
     ptOpen: function () { openPt(); },
