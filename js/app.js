@@ -237,18 +237,21 @@
     ['past', 'By the clock', 'Time’s up', 'Their window has closed today'],
     ['soon', 'By the clock', 'Coming up later', 'Their window hasn’t opened yet'],
     ['gone', 'Put away', 'Missed and gone', 'Let go when their day ended'],
-    ['arch', 'Put away', 'Archived', 'Retired habits']];
-  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, arch: false };
+    ['arch', 'Put away', 'Archived', 'Retired habits'],
+    ['bad', 'Kind', 'Bad habits', 'Habits you are cutting down']];
+  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, arch: false, bad: true };
   var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
   function SH() {
     var f = S.d.settings;
     if (!f.show) f.show = { done: !f.hideEntered, skip: !f.hideSkipped, rest: f.hideNotDue === false, late: true, past: false, soon: false, gone: false, arch: !f.hideArchived };   // from the old Filter
-    if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon'];
+    if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon', 'bad'];
+    if (f.show.bad === undefined) { f.show.bad = true; if (f.showPin.indexOf('bad') < 0) f.showPin.push('bad'); }   // v5.17
     return f.show;
   }
   function cats(h) {   // which drawer kinds this habit falls under right now
     var g = h.parent && S.habit(h.parent), c = [], w = winOf(h);
     if (h.archived || (g && g.archived)) c.push('arch');
+    if (h.kind === 'bad') c.push('bad');
     if (w > 0) c.push('past'); else if (w < 0) c.push('soon');
     if (isRep(h)) { var r = rep(h); if (r.due > 0) c.push('late'); if (!r.show) c.push(r.lastMiss ? 'gone' : 'rest'); }
     if (S.d.settings.skipDays && skippedToday(h)) c.push('skip');
