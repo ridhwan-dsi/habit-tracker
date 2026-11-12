@@ -2,7 +2,7 @@
    so the app always opens instantly and offline (never the browser's offline page). A new version
    arrives because the page calls reg.update() on launch → new sw.js installs the new files →
    takes over → page reloads once. Bump SHELL with every release (same number as js/config.js). */
-var SHELL = 'habits-shell-v5.8', ASSETS = 'habits-assets';
+var SHELL = 'habits-shell-v5.9', ASSETS = 'habits-assets';
 var FILES = ['./', 'index.html', 'css/app.css', 'js/config.js', 'js/store.js', 'js/sync.js', 'js/demo.js', 'js/stats.js', 'js/prayer.js', 'js/app.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 

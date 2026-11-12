@@ -7,7 +7,9 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 #app { height:100%; display:flex; flex-direction:column; max-width:720px; margin:0 auto; }
 .i { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
 .top { display:flex; align-items:center; gap:2px; padding:10px 6px 4px 16px; flex:none; }
-.top h1 { font-size:21px; margin:0; flex:1; font-weight:700; }
+.top h1 { font-size:21px; margin:0; flex:1; font-weight:700; line-height:1.2; }
+.top > .logo, .top > .logo + h1 { align-self:flex-start; }   /* logo and title share a top edge, even when the title wraps */
+.top > .logo + h1 { margin-top:9.6px; text-box:trim-start cap alphabetic; }   /* cap top = top of the green tiles (3px button padding + 5.8px inside the icon) */
 .ib { width:44px; height:44px; border:0; background:none; color:var(--muted); border-radius:12px; display:grid; place-items:center; cursor:pointer; padding:0; }
 .ib:active { background:var(--line); }
 
