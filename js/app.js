@@ -46,13 +46,15 @@
     eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     eyeOff: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6a9.8 9.8 0 011.4-.1c6 0 9.5 6.1 9.5 6.1a16 16 0 01-2.6 3.3M6.2 6.9A16.7 16.7 0 002.5 12s3.5 6.5 9.5 6.5a9 9 0 004.6-1.3M9.9 10a3 3 0 004.1 4.1"/></svg>',
     cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    flag: '<svg class="i" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
+  var SPC = { g: '#5DCA8A', a: '#EFB43F', r: '#EC6A6A' };
   var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', done: 'Done today' };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
-  function met(h, v) { return h.tt === 'max' ? v <= h.target : v >= h.target; }
+  function met(h, v) { var tg = h.target, it = SPT && (SPT.sprint.items || {})[h.id]; if (it && it.m === 'day' && it.t != null && h.type === 'num') tg = it.t; return h.tt === 'max' ? v <= tg : v >= tg; }   // v5.22: inside a sprint tab its per-day target decides
   /* ---- v5.5 Repeats (Google Tasks style) and "If not done". Occurrences come from a fixed schedule (every N days /
      weeks on chosen weekdays / months on a date) or from the day it was last done (every N days after done).
      If not done: 'drop' = missed when its day ends; 'stay' = stays due (red "due Nd") until done, its next turn, or keep days.
@@ -215,7 +217,7 @@
   /* ---- v4 Views: 'all', 'star', a tab id, 'arch' (archived), 'win' (hidden by time window) ---- */
   function tabsMode() { var m = S.d.settings.tabsMode; return m === 'top' || m === 'off' ? m : 'bottom'; }   // tab strip at top, above the bottom bar, or one page
   function visTabs() { return S.tabs().filter(function (t) { return !t.hidden; }); }
-  function stripTabs() { var sa = S.d.ui.showArchTabs; return S.tabs().filter(function (t) { return !t.hidden || sa; }); }   // archived tabs only when "Archived" is flipped on
+  function stripTabs() { var sa = S.d.ui.showArchTabs, cv = S.d.ui.view; return S.tabs().filter(function (t) { return (!t.hidden || sa) && (!isSpr(t) || sprPhase(t) !== 'end' || t.id === cv); }); }   // ended sprints leave the strip (Settings → Sprints)   // archived tabs only when "Archived" is flipped on
   function view() {
     var v = S.d.ui.view || 'all';
     if (VIEW_NAME[v]) return v;
@@ -229,6 +231,159 @@
   function setView(v) { S.d.ui.view = v; S.saveUi(); var sc = document.getElementById('sc'); if (sc) sc.scrollTop = 0; App.render(true); }
   function topOf(h) { return h.parent && S.habit(h.parent) || h; }
   function tabOf(h) { return S.tab(topOf(h).tab); }
+  /* ---- v5.22 Sprint tabs. t.sprint = { from, to ('YYYY-MM-DD'), color (rows coloured by progress), items: { habitId: { m, t, b } } }.
+     A sprint owns no habits: it lists habits or whole groups from other tabs (like Starred); ticks are the same entries.
+     m = 'day' (target per day) | 'total' (over the sprint) for measurable; 'pct' (% of days) | 'times' for yes/no and count groups.
+     t = target, b = baseline (blank = auto: the same measure over the equal span just before the start). Bad habits: lower is better. ---- */
+  var SPT = null;   // the sprint whose targets judge cells while its tab is being drawn
+  function isSpr(t) { return !!(t && t.sprint); }
+  function sprOf(v) { var t = S.tab(v); return isSpr(t) ? t : null; }
+  function regTabs() { return S.tabs().filter(function (t) { return !t.sprint; }); }
+  function sprPhase(t) { var k = S.today(), s = t.sprint; return k < s.from ? 'pre' : k > s.to ? 'end' : 'on'; }
+  function sprLen(s) { return Math.max(1, kDn(s.to) - kDn(s.from) + 1); }
+  function sprNum(h) { return isGroup(h) ? !!(h.agg && h.agg.t === 'sum') : h.type === 'num'; }
+  function sprMode(h, it) { var n = sprNum(h), m = it && it.m; return n ? (m === 'total' ? 'total' : 'day') : (m === 'times' ? 'times' : 'pct'); }
+  function sprDefT(h, m, L) { var tg = +h.target || 1; return m === 'day' ? tg : m === 'total' ? tg * L : m === 'pct' ? 80 : Math.ceil(L * 0.8); }
+  function sprIn(t, h) { var it = t.sprint.items || {}; return !!(it[h.id] || (h.parent && it[h.parent])); }
+  function sprDays(t) { var s = t.sprint, a = kDn(s.from), e = kDn(s.to), tk = kDn(S.today()); return { a: a, e: e, L: e - a + 1, n: tk < a ? 0 : Math.min(tk, e) - a + 1, left: Math.max(0, e - Math.max(tk, a - 1)) }; }
+  function sprRange(h, res, from, to, st) {   // counted days, sum of values, good days; today counts only once entered
+    var tk = kDn(S.today()), o = { n: 0, sum: 0, ok: 0 };
+    for (var d = from; d <= to; d++) {
+      var dt = fromDn(d); if (dt < st) continue;
+      var k = S.key(dt), r = res(k); if (r.s || !scheduled(h, dt)) continue;
+      if (d === tk && r.v == null && !r.ok) continue;
+      o.n++; if (r.ok) o.ok++; if (r.v != null && !isNaN(+r.v)) o.sum += +r.v;
+    }
+    return o;
+  }
+  function sprCalc(t, h) {   // per-day rates: r (now), T (target), B (baseline); cls g/a/r/n
+    var s = t.sprint, it = (s.items || {})[h.id]; if (!it) return null;
+    var D = sprDays(t), L = D.L, m = sprMode(h, it), bad = !isGroup(h) && h.kind === 'bad', num = sprNum(h), res = dayRes(h), st = startOf(h);
+    var tv = it.t != null && it.t !== '' ? +it.t : sprDefT(h, m, L);
+    var rate = function (o) { if (!o.n) return null; var c = bad && !num ? o.n - o.ok : o.ok; return m === 'day' || m === 'total' ? o.sum / o.n : c / o.n; };
+    var per = function (v) { return m === 'day' ? v : m === 'pct' ? v / 100 : v / L; };
+    var disp = function (r) { return m === 'day' ? r : m === 'pct' ? r * 100 : r * L; };
+    var cur = sprRange(h, res, D.a, Math.min(D.e, D.a + D.n - 1), st), r = rate(cur), T = per(tv);
+    var B = it.b != null && it.b !== '' ? per(+it.b) : rate(sprRange(h, res, D.a - L, D.a - 1, st)), bAuto = !(it.b != null && it.b !== '');
+    var cls = 'n';
+    if (r != null && cur.n >= 3) cls = bad ? (r <= T ? 'g' : B != null && r < B ? 'a' : 'r') : (r >= T ? 'g' : B != null && r > B ? 'a' : 'r');
+    var done = m === 'total' ? cur.sum : m === 'times' ? (bad && !num ? cur.n - cur.ok : cur.ok) : null;
+    var pct = r == null ? null : bad ? (B ? Math.round((r - B) / B * 100) : null) : Math.round(r / (T || 1) * 100);
+    var pace = r == null ? null : m === 'total' || m === 'times' ? Math.round(r * L / (tv || 1) * 100) : pct;
+    var u = num && h.unit ? ' ' + h.unit : '', f = function (v) { return v == null ? '–' : String(num_(v)); };
+    var line = m === 'day' ? (r == null ? 'no days yet' : 'avg ' + f(r) + u) + ' · ' + (bad ? 'limit ' : 'target ') + f(tv) + ' a day'
+      : m === 'total' ? f(done) + ' / ' + f(tv) + u + ' total'
+      : m === 'pct' ? (r == null ? '–' : Math.round(r * 100) + '%') + ' of days' + (bad ? ' slipped · limit ' : ' · target ') + f(tv) + '%'
+      : f(done) + ' / ' + f(tv) + ' times';
+    line += B != null ? ' · base ' + (m === 'pct' ? Math.round(B * 100) + '%' : f(disp(B))) : '';
+    return { it: it, m: m, bad: bad, num: num, r: r, T: T, B: B, bAuto: bAuto, tv: tv, cls: cls, pct: pct, pace: pace, line: line, cur: cur, D: D, res: res, st: st, disp: disp };
+  }
+  function num_(v) { return Math.round(v * 10) / 10; }
+  function sprLine(t, h) {   // row text + colour inside the sprint tab
+    var c = sprCalc(t, h); if (!c) return null;
+    var v = c.pct == null ? '' : c.bad ? (c.pct > 0 ? '+' : '') + c.pct + '%' : (c.m === 'total' || c.m === 'times' ? c.pace : c.pct) + '%';
+    var f = function (x) { return x == null ? '–' : String(num_(x)); }, u = c.num && h.unit ? ' ' + h.unit : '', lim = c.bad ? '≤' : '';
+    var sh = c.m === 'day' ? f(c.r) + ' / ' + lim + f(c.tv) + u + ' a day' : c.m === 'total' ? f(c.cur.sum) + ' / ' + lim + f(c.tv) + u
+      : c.m === 'pct' ? (c.r == null ? '–' : Math.round(c.r * 100)) + '% / ' + lim + f(c.tv) + '% of days' : f(c.bad && !c.num ? c.cur.n - c.cur.ok : c.cur.ok) + ' / ' + lim + f(c.tv) + ' times';
+    return { cls: c.cls, html: '<small class="spl">' + esc(sh) + (v ? ' · <b class="sp' + c.cls + '">' + v + '</b>' : '') + '</small>' };
+  }
+  function sprHead(t) {
+    var s = t.sprint, D = sprDays(t), ph = sprPhase(t), dt = function (k) { var p = k.split('-'); return (+p[2]) + ' ' + MON3[+p[1] - 1]; };
+    return dt(s.from) + ' – ' + dt(s.to) + ' · ' + (ph === 'pre' ? 'starts in ' + (D.a - kDn(S.today())) + ' day' + (D.a - kDn(S.today()) > 1 ? 's' : '') : ph === 'end' ? 'ended' : 'day ' + D.n + ' of ' + D.L + ' · ' + D.left + ' left');
+  }
+  function sprAdd(t, ids, on) {   // add / remove these habits (or groups) to a sprint
+    var it = t.sprint.items = t.sprint.items || {};
+    ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (on) { if (!it[id]) it[id] = { m: sprMode(h, null), t: null, b: null }; } else delete it[id]; });
+    S.putTab(t);
+  }
+  function openAddSpr() {
+    var ids = Object.keys(sel || {}), sp = S.tabs().filter(function (t) { return isSpr(t) && sprPhase(t) !== 'end'; });
+    showSheet('addspr', '<h3>Add to sprint</h3>' + (sp.length ? sp.map(function (t) {
+        var all = ids.every(function (id) { return (t.sprint.items || {})[id]; });
+        return '<button class="mi trow" data-act="sprTog" data-tab="' + t.id + '"><span class="box' + (all ? ' on' : '') + '">' + (all ? ICON.check : '') + '</span><span>' + esc(t.name) + '<small class="muted" style="display:block">' + esc(sprHead(t)) + '</small></span></button>';
+      }).join('') : '<p class="small muted">No running or upcoming sprints yet.</p>') +
+      '<button class="mi trow add" data-act="sprNew">' + ICON.plus + '<span>New sprint</span></button><div class="row end"><button class="btn" data-act="close">Done</button></div>');
+  }
+  function openSprEdit(t, ids, copy) {   // new (t null) or edit: name, short, dates, colour switch, each habit's measure / target / baseline
+    var k = S.today(), e = new Date(S.todayDate()); e.setDate(e.getDate() + 29);
+    var s = t ? t.sprint : { from: k, to: S.key(e), color: copy ? copy.sprint.color !== false : true, items: copy ? copy.sprint.items : {} }, its = JSON.parse(JSON.stringify(s.items || {}));
+    (ids || []).forEach(function (id) { var h = S.habit(id); if (h && !its[id]) its[id] = { m: sprMode(h, null), t: null, b: null }; });
+    var L = sprLen(s), tmp = { sprint: { from: s.from, to: s.to, items: its } };
+    var rows = Object.keys(its).filter(function (id) { return S.habit(id); }).map(function (id) {
+      var h = S.habit(id), it = its[id], m = sprMode(h, it), c = sprCalc(tmp, h), num = sprNum(h);
+      var bAuto = c && c.B != null ? (m === 'pct' ? Math.round(c.B * 100) : num_(c.disp(c.B))) : '';
+      return '<div class="spe" data-id="' + id + '"><div class="spen"><b style="color:' + esc(h.color) + '">' + esc(h.name) + '</b>' + (isGroup(h) ? '<small class="muted"> group</small>' : '') +
+        '<button class="ib sm" data-act="sprRm" data-id="' + id + '" aria-label="Remove">' + ICON.bin + '</button></div><div class="spef">' +
+        '<select id="spm-' + id + '" class="sel">' + opts(num ? [['day', 'Per day'], ['total', 'Sprint total']] : [['pct', '% of days'], ['times', 'Times in sprint']], m) + '</select>' +
+        '<label>' + (h.kind === 'bad' ? 'Limit' : 'Target') + '<input id="spt-' + id + '" inputmode="decimal" value="' + (it.t != null ? it.t : '') + '" placeholder="' + num_(sprDefT(h, m, L)) + '"></label>' +
+        '<label>Baseline<input id="spb-' + id + '" inputmode="decimal" value="' + (it.b != null ? it.b : '') + '" placeholder="' + (bAuto === '' ? 'auto' : bAuto + ' auto') + '"></label></div></div>';
+    }).join('');
+    showSheet('spredit', '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (t ? 'Edit sprint' : 'New sprint') + '</h2><button class="btn pri sm" data-act="sprSave">Save</button></div><div class="stats">' +
+      '<label class="fl">Name<input id="spName" value="' + esc(t ? t.name : copy ? copy.name + ' 2' : '') + '" placeholder="e.g. Ramadan prep" maxlength="30"></label>' +
+      '<label class="fl">Short name (optional)<input id="spShort" value="' + esc(t && t.short || '') + '" maxlength="10"></label>' +
+      '<div class="spd"><label class="fl">Starts<input type="date" id="spFrom" value="' + s.from + '"></label><label class="fl">Ends<input type="date" id="spTo" value="' + s.to + '"></label></div>' +
+      '<button class="flip srw" data-act="sprCol" aria-pressed="' + (s.color !== false) + '" style="width:100%;justify-content:space-between"><span>Colour by progress</span><i class="tgl' + (s.color !== false ? ' on' : '') + '" id="spCol"></i></button>' +
+      '<p class="small muted">Green = on target, amber = better than baseline, red = at or below baseline, grey = fewer than 3 days so far. Only inside this tab.</p>' +
+      '<h4 class="sph">Habits</h4>' + (rows || '<p class="small muted">None yet. Hold a habit name, select, then tap the flag on the top bar.</p>') +
+      '<p class="small muted">Leave target blank for the suggestion; leave baseline blank to use your average over the same number of days before the start. Inside this tab a “per day” target also decides when the cell turns green.</p>' +
+      (t ? '<div class="row"><button class="btn" data-act="sprAgain">Run again with new dates</button></div>' : '') + '</div>', 'page');
+    App._spr = { t: t, its: its };
+  }
+  function sprRead() {
+    var o = App._spr, f = function (id) { return document.getElementById(id); };
+    Object.keys(o.its).forEach(function (id) {
+      var m = f('spm-' + id), tv = f('spt-' + id), bv = f('spb-' + id); if (!m) return;
+      var n = function (x) { var v = x.value.trim().replace(',', '.'); return v === '' || isNaN(+v) ? null : +v; };
+      o.its[id] = { m: m.value, t: n(tv), b: n(bv) };
+    });
+    return { name: f('spName').value.trim(), short: f('spShort').value.trim(), from: f('spFrom').value, to: f('spTo').value, color: f('spCol').classList.contains('on') };
+  }
+  function openSprStats(t) {   // v5.22 sprint stats: tiles, pace per habit, each day, progress lines vs target and baseline
+    RC = null;
+    var s = t.sprint, D = sprDays(t), H = Object.keys(s.items || {}).map(function (id) { return S.habit(id); }).filter(function (h) { return h && !h.archived; });
+    var C = H.map(function (h) { return { h: h, c: sprCalc(t, h) }; });
+    var ok = C.filter(function (x) { return x.c.cls === 'g'; }).length, rated = C.filter(function (x) { return x.c.r != null; });
+    var vt = rated.filter(function (x) { return !x.c.bad; }), avgT = vt.length ? Math.round(vt.reduce(function (a, x) { return a + Math.min(1.5, x.c.r / (x.c.T || 1)); }, 0) / vt.length * 100) : null;
+    var vb = rated.filter(function (x) { return x.c.B; }), avgB = vb.length ? Math.round(vb.reduce(function (a, x) { return a + (x.c.r - x.c.B) / x.c.B * (x.c.bad ? -1 : 1); }, 0) / vb.length * 100) : null;
+    var dN = [], dOk = [], perfect = 0, act = 0;
+    for (var i = 0; i < D.n; i++) {
+      var dt = fromDn(D.a + i), k = S.key(dt), n = 0, g = 0;
+      C.forEach(function (x) { var r = x.c.res(k); if (dt < x.c.st || r.s || !scheduled(x.h, dt) || (k === S.today() && r.v == null && !r.ok)) return; n++; if (r.ok) g++; });
+      dN.push(n); dOk.push(g); if (n) { act++; if (g === n) perfect++; }
+    }
+    var tile = function (l, v, cls) { return '<div class="tile"><span>' + l + '</span><b' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</b></div>'; };
+    var tiles = '<div class="tiles">' + tile('On track', ok + '<small> / ' + C.length + '</small>', 'spg') + tile('Overall vs target', avgT == null ? '—' : avgT + '%') +
+      tile('vs baseline', avgB == null ? '—' : (avgB > 0 ? '+' : '') + avgB + '%', avgB == null ? '' : avgB >= 0 ? 'spg' : 'spr') + tile('Perfect days', perfect + '<small> / ' + act + '</small>') + '</div>';
+    var pace = '<section class="stc"><h4>' + (D.n ? 'Pace to finish' : 'Not started yet') + '</h4>' + C.map(function (x) {
+      var c = x.c, v = c.bad ? c.pct : c.pace, w = c.bad ? (c.B ? Math.max(2, Math.min(100, (c.T / Math.max(c.r || 0, 1e-9)) * 100)) : 0) : Math.max(2, Math.min(100, v || 0));
+      return '<button class="ovh" data-act="ovOpen" data-id="' + x.h.id + '"><i style="background:' + esc(x.h.color) + '"></i><span class="ovn">' + esc(x.h.name) + '<em>' + esc(c.line) + '</em></span>' +
+        '<span class="ovb"><span class="sp' + c.cls + 'b" style="width:' + (v == null ? 0 : w) + '%"></span></span><b class="sp' + c.cls + '">' + (v == null ? '—' : (c.bad && v > 0 ? '+' : '') + v + '%') + '</b></button>';
+    }).join('') + '<p class="small muted">Per day and % of days: where you are now against the target. Totals and times: where you’ll finish at this pace. Bad habits: change against baseline (minus is good).</p></section>';
+    var W = 320, Hh = 80, bw = W / Math.max(1, D.L), bars = '';
+    for (var j = 0; j < D.n; j++) { var v = dN[j] ? dOk[j] / dN[j] : null, hh = v == null ? 0 : Math.max(2, v * (Hh - 4)); if (v != null) bars += '<rect x="' + (j * bw + bw * 0.15).toFixed(1) + '" y="' + (Hh - hh).toFixed(1) + '" width="' + (bw * 0.7).toFixed(1) + '" height="' + hh.toFixed(1) + '" rx="2" class="' + (v === 1 ? 'bf' : 'bp') + '"/>'; }
+    var daily = D.n ? '<section class="stc"><h4>Each day · share of sprint habits done</h4><svg class="ovc" viewBox="0 0 ' + W + ' ' + (Hh + 2) + '" preserveAspectRatio="none"><line x1="0" x2="' + W + '" y1="' + Hh / 2 + '" y2="' + Hh / 2 + '" class="gl"/>' + bars + '</svg><div class="ovx"><span>Start</span><span>End</span></div></section>' : '';
+    var lines = D.n ? '<section class="stc"><h4>Running total vs target and baseline</h4>' + C.map(function (x) {
+      var c = x.c, acc = 0, pts = [], mx = Math.max(c.T || 0, c.B || 0) * D.L || 1;
+      for (var i = 0; i < D.n; i++) { var dt = fromDn(D.a + i), r = c.res(S.key(dt)); if (!(dt < c.st || r.s)) acc += c.m === 'day' || c.m === 'total' ? (+r.v || 0) : (c.bad && !c.num ? (r.ok ? 0 : 1) : (r.ok ? 1 : 0)); pts.push(acc); }
+      mx = Math.max(mx, acc) || 1;
+      var X = function (i) { return (i + 1) / D.L * 300; }, Y = function (v) { return 60 - v / mx * 56; };
+      var ln = function (rt, cl) { return rt == null ? '' : '<line x1="0" y1="60" x2="300" y2="' + Y(rt * D.L).toFixed(1) + '" class="' + cl + '"/>'; };
+      return '<div class="spc"><span><i style="background:' + esc(x.h.color) + '"></i>' + esc(x.h.name) + '</span><svg viewBox="0 0 300 62" preserveAspectRatio="none">' + ln(c.T, 'spt') + ln(c.B, 'spbl') +
+        '<polyline points="0,60 ' + pts.map(function (p, i) { return X(i).toFixed(1) + ',' + Y(p).toFixed(1); }).join(' ') + '" class="spl2" style="stroke:' + esc(x.h.color) + '"/></svg></div>';
+    }).join('') + '<p class="small muted">Coloured line = you · dashed green = target · dotted grey = baseline.</p></section>' : '';
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + esc(t.name) + '</h2><button class="ib" data-act="sprEditOpen" data-tab="' + t.id + '" aria-label="Edit sprint">' + ICON.pen + '</button></div>' +
+      '<div class="stats"><p class="stsub">' + esc(sprHead(t)) + '</p>' + (C.length ? tiles + pace + daily + lines : '<p class="muted">No habits in this sprint yet. Hold a habit name, select, then tap the flag.</p>') +
+      (sprPhase(t) === 'end' ? '<div class="row"><button class="btn" data-act="sprAgainId" data-tab="' + t.id + '">Run again with new dates</button></div>' : '') + '</div>';
+    App._sprSt = t.id;
+    if (sheetOpen === 'stats') { sheetOpen = 'sprst'; sheet.innerHTML = html; sheet.className = 'sheet page'; sheet.scrollTop = 0; }
+    else showSheet('sprst', html, 'page');
+  }
+  function openSprList() {
+    var sp = S.tabs().filter(isSpr);
+    showSheet('sprlist', '<h3>Sprints</h3>' + (sp.length ? sp.map(function (t) {
+      return '<button class="mi trow" data-act="sprStatsId" data-tab="' + t.id + '"><span>' + esc(t.name) + '<small class="muted" style="display:block">' + esc(sprHead(t)) + '</small></span></button>'; }).join('')
+      : '<p class="small muted">None yet. Hold a tab → New → Sprint.</p>') + '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
+  }
   // base: may this habit be on screen at all right now (hidden tab, archive, time window, entered)?
   function base(h, v) {
     var tb = tabOf(h), g = h.parent && S.habit(h.parent), f = S.d.settings;
@@ -277,6 +432,7 @@
     if (v === 'star') return !!(h.star || (g && g.star));
     if (v === 'done') return doneToday(h);
     if (v === 'all') return tabsMode() === 'off' || !tabOf(h);   // Main = habits with no tab of their own
+    var st = sprOf(v); if (st) return sprIn(st, h);
     var tb = tabOf(h); return !!tb && tb.id === v;
   }
   // Habits on screen, in order. A group shows when it belongs itself, or (as context) when one of its sub-habits does.
@@ -330,7 +486,8 @@
     render: function (resetScroll) {
       var sc = document.getElementById('sc'), keep = sc && !resetScroll ? { l: sc.scrollLeft, t: sc.scrollTop } : null;
       RC = null;
-      var days = S.days(NDAYS), all = S.habits(), list = shownList(), v = view(), mode = tabsMode(), f = S.d.settings;
+      var days = S.days(NDAYS), all = S.habits(), list = shownList(), v = view(), mode = tabsMode(), f = S.d.settings, spT = sprOf(v);
+      SPT = spT;
       if (sel) Object.keys(sel).forEach(function (id) { if (!S.habit(id)) delete sel[id]; });
       var head = '<div class="drow"><div class="nm"></div>' + days.map(function (d, i) {
         return '<div class="dh' + (i === 0 ? ' tdy' : '') + '"><span>' + WD[d.dt.getDay()].toUpperCase() + '</span><b>' + d.dt.getDate() + '</b></div>';
@@ -338,12 +495,12 @@
       // Top-level habits in order; each group card holds its parent row and (unless folded) its sub-habits.
       var shown = {}; list.forEach(function (h) { shown[h.id] = 1; });
       var rowHtml = function (h, cls, grp) {
-        var wt = winOwn(h) && winTxt(h), cx = grp && ctxGrp(h);
+        var wt = winOwn(h) && winTxt(h), cx = grp && ctxGrp(h), sl = spT && sprLine(spT, h), scol = sl && spT.sprint.color !== false && sl.cls !== 'n' ? SPC[sl.cls] : null;
         if (cx) { grp = false; cls += ' ctx'; }
-        return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '">' +
+        return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span style="color:' + esc(h.color) + '">' + esc(h.name) + dueTag(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + '</span>' +
+          '<span style="color:' + esc(scol || h.color) + '">' + esc(h.name) + dueTag(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -376,17 +533,18 @@
       // v5.5 tab strip: Main first, full name on the open tab, short name on the others; side-scrolls
       // Full names; fitChips() swaps inactive tabs to their short names only when the strip runs out of room
       var chips = '<div class="chips' + (tp ? ' editing' : '') + '" id="chips">' + [{ id: 'all', name: 'Main' }].concat(stripTabs()).map(function (t) {
-          return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
+          return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (t.sprint ? ' spr' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
         }).join('') + '</div>';   // new tabs: hold any tab → panel → New
       var tpan = tp && mode !== 'off' ? tabPanel() : '';
       var gOn = f.starGroups !== false;
-      var vbar = v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
+      var vbar = spT ? '<div class="vbar spv"><span>' + esc(sprHead(spT)) + '</span><button class="flip" data-act="sprEditOpen" data-tab="' + spT.id + '">Targets ' + ICON.pen + '</button></div>' : v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
         : mode === 'top' && VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '';
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
         (S.d.settings.skipDays ? '<button class="ib' + (allSkipped() ? ' lit' : '') + '" data-act="selSkip" aria-label="' + (allSkipped() ? 'Unskip today' : 'Skip today') + '"' + (n ? '' : ' disabled') + '>' + ICON.skip + '</button>' : '') +
-        '<button class="ib" data-act="selHide" aria-label="' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
+        '<button class="ib" data-act="sprAddOpen" aria-label="Add to sprint"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>' +
+        '<button class="ib" data-act="selHide" aria-label=""' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
@@ -401,7 +559,7 @@
         rb('doneToggle', ICON.doneDay, 'Done', v === 'done') +
         rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.hid ? '<i class="bdg hid">' + shc.hid + '</i>' : '') +
         (mode === 'top' ? rb('add', ICON.plus, 'Add', false) : '') +
-        rb('overview', ICON.chart, 'Stats', sheetOpen === 'ov') +
+        rb('overview', ICON.chart, 'Stats', sheetOpen === 'ov' || sheetOpen === 'sprst') +
         (all.some(isGroup) ? '<button class="rbtn ionly" data-act="foldCycle" aria-label="' + { open: 'All groups expanded', shut: 'All groups collapsed', man: 'Groups as set in Edit' }[foldMode()] + '">' +
           { open: ICON.fOpen, shut: ICON.fShut, man: ICON.fMan }[foldMode()] + '</button>' : '') +
         rb('weight', ICON.scale, 'Weight', false) + '</nav>';
@@ -417,6 +575,7 @@
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
           : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : shc.hid ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (shc.hid ? '<p class="small">' + shc.hid + ' tucked away — the eye below shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'shw') + '">' + (tabV ? 'Add a habit to this tab' : 'What’s on your list') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="starters">Start from examples</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
+      SPT = null;
       root.classList.toggle('sublines', f.subLines !== false);
       root.classList.toggle('noscr', f.hScroll === false);
       root.classList.toggle('nofrz', f.freezeToday === false);
@@ -763,7 +922,7 @@
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
         bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
-    if (sheetOpen === 'stats' || sheetOpen === 'edit') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
+    if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
 
@@ -1036,7 +1195,7 @@
     var h = id ? S.habit(id) : null;
     draft = JSON.parse(JSON.stringify(h || S.newHabit()));
     draft._new = !h; draft._ttSet = !!h;
-    if (!h) { var v = view(); if (S.tab(v)) draft.tab = v; if (v === 'star') draft.star = true; }
+    if (!h) { var v = view(); if (S.tab(v) && !sprOf(v)) draft.tab = v; if (sprOf(v)) draft._spr = v; if (v === 'star') draft.star = true; }
     if (!draft.win) draft.win = { from: '', to: '' };
     if (!draft.miss) draft.miss = { t: 'drop', keep: null };
     if (draft.freq.t === 'days') draft.freq = draft.freq.days && draft.freq.days.length ? { t: 'rep', n: 1, ev: 1, u: 'w', days: draft.freq.days, from: 'sch', a: S.key(startOf(h)), md: 1 } : { t: 'day', n: 1, days: [] };
@@ -1125,7 +1284,7 @@
           : h.link === 'pg' ? 'Ticks on days you read any Qur’an pages in Hifz.' : 'Ticks on days your Hifz time reaches its daily goal (5 min if no goal is set).') +
           ' Hifz never removes a mark you made yourself.</span></div>' : '') +
       (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
-        [{ id: '', name: 'Main' }].concat(S.tabs()).map(function (t) {
+        [{ id: '', name: 'Main' }].concat(regTabs()).map(function (t) {
           return '<button class="tchip' + ((h.tab || '') === t.id ? ' on' : '') + '" data-act="ef" data-f="tab" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</button>';
         }).join('') + '</div></div>' : '') +
       '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two">' + edgeField('From', 'Show from', h.win.from) + edgeField('To', 'Hide after', h.win.to) + '</div>' +
@@ -1256,6 +1415,7 @@
           seg('tabsMode', 'tabsMode', [['top', 'Top'], ['bottom', 'Bottom'], ['off', 'One page']], tabsMode()))) +
       grp('Habits', (S.demo ? '' : go('starters', 'Add from examples', '', 'Pick ready-made habits (Qur’an pages, Salah in Masjid, workout…). They start with no history.')) +
         (tabsMode() === 'off' ? go('tabsSheet', 'Tabs', S.tabs().filter(function (t) { return !t.hidden; }).length, 'Add, rename, archive or delete tabs.') : '') +
+        (S.tabs().some(isSpr) ? go('sprList', 'Sprints', S.tabs().filter(isSpr).length, 'Every sprint, running or ended, with its report.') : '') +
         (archT ? go('hiddenTabs', 'Archived tabs', S.tabs().filter(function (t) { return t.hidden; }).length, 'Tabs you archived, with their habits. Hold one to bring it back.') : '') +
         go('ptOpen', 'Prayer times', s.pt && s.pt.lat != null ? esc(s.pt.name || 'Set') : 'Not set', 'Lets a time window start or end at a prayer, e.g. “Asr − 15 min”.')) +
       grp('Marking', tg('shortPress', 'Mark with a short tap', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
@@ -1331,7 +1491,7 @@
         : '<p class="muted">None.</p>') + '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
   }
   function askTabName(t) {   // v5.5: name + optional short name (shown on the strip when the tab isn't open)
-    showSheet('tabname', '<h3>' + (t ? 'Edit tab' : 'New tab') + '</h3><input id="tabIn" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Daily, Weekly, Monthly" maxlength="30" enterkeyhint="next" autocomplete="off">' +
+    showSheet('tabname', '<h3>' + (t ? 'Edit tab' : 'New tab') + '</h3>' + (t ? '' : '<div class="seg" style="margin-bottom:10px"><button class="on">Regular</button><button data-act="sprNew">Sprint</button></div>') + '<input id="tabIn" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Daily, Weekly, Monthly" maxlength="30" enterkeyhint="next" autocomplete="off">' +
       '<label class="fl" style="margin-top:10px">Short name (optional)<input id="tabSh" value="' + esc(t && t.short || '') + '" placeholder="e.g. Wk" maxlength="10" enterkeyhint="done" autocomplete="off"></label>' +
       '<p class="small muted" style="margin-top:6px">The full name shows on the open tab, the short name on the others.</p>' +
       '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="tabSave">' + (t ? 'Save' : 'Create') + '</button></div>', 'attop');
@@ -1364,7 +1524,7 @@
   function openMoveToTab() {
     showSheet('movetab', '<h3>Move to tab</h3>' +
       '<button class="mi trow" data-act="moveTo" data-tab=""><span>Main</span></button>' +
-      S.tabs().map(function (t) { return '<button class="mi trow" data-act="moveTo" data-tab="' + t.id + '"><span>' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</span></button>'; }).join('') +
+      regTabs().map(function (t) { return '<button class="mi trow" data-act="moveTo" data-tab="' + t.id + '"><span>' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</span></button>'; }).join('') +
       '<button class="mi trow add" data-act="moveToNew">' + ICON.plus + '<span>New tab…</span></button>');
   }
   // Hold a tab chip / tab row (450 ms) → its actions. A short tap still opens the tab.
@@ -1548,7 +1708,7 @@
     flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
     tpDone: function () { closeTp(); },
-    tpRename: function () { var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be renamed'); askTabName(t); },
+    tpRename: function () { var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be renamed'); if (isSpr(t)) return openSprEdit(t); askTabName(t); },
     tpArchive: function () {
       var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be archived');
       t.hidden = !t.hidden; S.putTab(t);
@@ -1644,7 +1804,7 @@
       if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
       var tick = h._tick;
       var back = h._from === 'stats';
-      delete h._new; delete h._ttSet; delete h._tick; delete h._from;
+      var nspr = h._spr; delete h._new; delete h._ttSet; delete h._tick; delete h._from; delete h._spr;
       var done = function () {
         if (sw) S.switchType(h, h.type, tick);
         var op = o ? o.parent || null : null, np = h.parent || null;
@@ -1654,7 +1814,7 @@
           order.splice(at, 0, h.id); S.reorder(order);
           if (np && folded(np)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[np] = false; S.saveUi(); }
         }
-        S.putHabit(h); if (h.link) fillHifz(false); App.render();
+        S.putHabit(h); if (nspr && S.tab(nspr)) sprAdd(S.tab(nspr), [h.id], true); if (h.link) fillHifz(false); App.render();
         var rr = rep(h);
         if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
         else if (rr && !rr.show && !SH().rest) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
@@ -1676,9 +1836,34 @@
     numOk: function () { App._num(false); },
     numClear: function () { App._num(true); },
     numSkip: function () { App._num(true, true); },
-    overview: function () { if (sheetOpen === 'ov') return closeSheet(); ovFrom = false; if (sheetOpen) closeSheet(openOverview); else openOverview(); },
+    sprAddOpen: function () { openAddSpr(); },
+    sprTog: function (el) {
+      var t = S.tab(el.dataset.tab), ids = Object.keys(sel || {}); if (!t) return;
+      var on = !ids.every(function (id) { return (t.sprint.items || {})[id]; }); sprAdd(t, ids, on);
+      closeSheet(function () { selEnd(function () { App.toast((on ? 'Added to “' : 'Removed from “') + t.name + '”'); }); });
+    },
+    sprNew: function () { var ids = sel ? Object.keys(sel) : [], go = function () { openSprEdit(null, ids); }; closeSheet(function () { if (sel) selEnd(go); else go(); }); },
+    sprEditOpen: function (el) { var t = S.tab(el.dataset.tab); if (!t) return; if (sheetOpen) closeSheet(function () { openSprEdit(t); }); else openSprEdit(t); },
+    sprStatsId: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { openSprStats(t); }); },
+    sprList: function () { closeSheet(openSprList); },
+    sprCol: function (el) { var i = document.getElementById('spCol'); i.classList.toggle('on'); el.setAttribute('aria-pressed', i.classList.contains('on')); },
+    sprRm: function (el) { var o = App._spr; sprRead(); delete o.its[el.dataset.id]; var e = el.closest('.spe'); if (e) e.remove(); },
+    sprAgain: function () { var t = App._spr.t; closeSheet(function () { openSprEdit(null, null, t); }); },
+    sprAgainId: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { openSprEdit(null, null, t); }); },
+    sprSave: function () {
+      var o = App._spr, v = sprRead();
+      if (!v.name) return App.toast('Give the sprint a name');
+      if (!v.from || !v.to || v.to < v.from) return App.toast('Pick an end date on or after the start');
+      var sp = { from: v.from, to: v.to, color: v.color, items: o.its };
+      closeSheet(function () {
+        if (o.t) { o.t.name = v.name; o.t.short = v.short; o.t.sprint = sp; S.putTab(o.t); App.render(); App.toast('Sprint saved'); }
+        else { var nt = S.putTab({ name: v.name, short: v.short, sprint: sp }); if (tabsMode() === 'off') App.render(); else setView(nt.id); App.toast('Sprint “' + v.name + '” created'); }
+      });
+    },
+    overview: function () { var spt = sprOf(view()); if (spt) { if (sheetOpen === 'sprst') return closeSheet(); return sheetOpen ? closeSheet(function () { openSprStats(spt); }) : openSprStats(spt); }
+      if (sheetOpen === 'ov') return closeSheet(); ovFrom = false; if (sheetOpen) closeSheet(openOverview); else openOverview(); },
     ovRange: function (el) { ovR = +el.dataset.v; openOverview(true); },
-    ovOpen: function (el) { ovFrom = true; openStats(el.dataset.id); },
+    ovOpen: function (el) { ovFrom = sheetOpen === 'sprst' ? 'spr' : true; openStats(el.dataset.id); },
     settings: function () { closeSheet(openSettings); },
     demoOn: function () { setDemo(true); },
     starters: function () { stSel = {}; if (sheetOpen) closeSheet(function () { openStarters(); }); else openStarters(); },
@@ -1730,7 +1915,7 @@
       S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
       S.saveSettings(); wBack();
     },
-    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { ovFrom = false; return openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
     statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
     stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },

@@ -396,3 +396,23 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .offs .tpk { margin-top:4px; }
 .wdt { grid-template-columns:1fr 1.25fr; } .tpk .sel { padding-left:8px; padding-right:2px; }
 .tpk .sel:last-child { flex:1.25; }
+
+/* v5.22 sprint tabs */
+.tchip.spr { position:relative; padding-right:20px; }
+.tchip.spr::after { content:''; position:absolute; right:7px; top:9px; bottom:9px; width:3px; border-radius:2px; background:repeating-linear-gradient(#EFB43F 0 3px, transparent 3px 5px); }
+.spl { display:block; font-size:11.5px; font-weight:400; color:var(--muted); margin-top:1px; }
+.spl b { font-weight:600; }
+.spg, .spgx .nm span { color:#5DCA8A; } .spa { color:#EFB43F; } .spr:not(.tchip) { color:#EC6A6A; } .spn { color:var(--muted); }
+.spgb { background:#5DCA8A; } .spab { background:#EFB43F; } .sprb { background:#EC6A6A; } .spnb { background:var(--muted); }
+.hrow.spx .nmi { box-shadow:inset 3px 0 0 var(--spc, transparent), var(--edge); }
+.hrow.spgx { --spc:#5DCA8A; } .hrow.spax { --spc:#EFB43F; } .hrow.sprx { --spc:#EC6A6A; }
+.vbar.spv span { font-size:12.5px; color:var(--muted); } .vbar.spv .flip .i { width:15px; height:15px; }
+.spe { border-top:1px solid var(--line); padding:10px 0; } .spen { display:flex; align-items:center; gap:6px; } .spen b { flex:1; font-weight:600; }
+.spen .ib.sm { width:32px; height:32px; } .spen .ib.sm .i { width:17px; height:17px; }
+.spef { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; align-items:flex-end; } .spef select { flex:1 1 120px; height:44px; }
+.spef label { flex:1 1 80px; display:flex; flex-direction:column; font-size:11.5px; color:var(--muted); gap:3px; } .spef input { width:100%; }
+.spd { display:flex; gap:10px; } .spd .fl { flex:1; } .sph { margin:14px 0 2px; }
+.spc { margin:8px 0 12px; } .spc > span { display:flex; align-items:center; gap:6px; font-size:13px; margin-bottom:4px; } .spc > span i { width:8px; height:8px; border-radius:50%; }
+.spc svg { width:100%; height:62px; display:block; } .spt { stroke:#5DCA8A; stroke-width:1.5; stroke-dasharray:5 4; } .spbl { stroke:var(--muted); stroke-width:1.2; stroke-dasharray:2 3; }
+.spl2 { fill:none; stroke-width:2.2; vector-effect:non-scaling-stroke; } .spt, .spbl { vector-effect:non-scaling-stroke; }
+.mi.trow .box { flex:none; width:22px; margin-right:4px; } .mi.trow .box + span { flex:1; text-align:left; }

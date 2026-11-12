@@ -35,6 +35,10 @@
         [habit({ name: 'Pay rent', color: '#F2A65A', freq: { t: 'rep', n: 1, ev: 1, u: 'm', md: 1, from: 'sch', a: ago(199) }, miss: { t: 'stay', keep: null }, tab: M }), 0.7, null, function (dt) { return dt.getDate() <= 4 && dt.getDate() > 1; }],
         [habit({ name: 'Car oil change', color: '#C4A49A', freq: { t: 'rep', n: 1, ev: 90, u: 'd', from: 'done', a: ago(170) }, miss: { t: 'stay', keep: null }, tab: M }), 1, null, function (dt, i) { return i === 160 || i === 66; }]);
 
+      var sEnd = new Date(t0); sEnd.setDate(t0.getDate() + 20), si = {};   // v5.22: a running sprint
+      si[list[0][0].id] = { m: 'day', t: 4, b: null }; si[list[1][0].id] = { m: 'total', t: 450, b: null }; si[g.id] = { m: 'pct', t: 80, b: null };
+      si[list.filter(function (x) { return x[0].name === 'Social media'; })[0][0].id] = { m: 'day', t: 20, b: null };
+      T.demoTabS = { id: 'demoTabS', u: now, name: '30-day push', short: 'Push', order: 3, hidden: false, sprint: { from: ago(9), to: Store.key(sEnd), color: true, items: si } };
       var t = Store.todayDate();
       for (var i = 0; i < 200; i++) {
         var dt = new Date(t); dt.setDate(t.getDate() - i);
