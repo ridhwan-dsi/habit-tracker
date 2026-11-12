@@ -347,3 +347,17 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 .chart .wlast { r:4.5; }
 .wedc .frow { margin:0; } .wedc .seg { margin-top:8px; }
 .wst .wg { margin-bottom:10px; }
+/* v5.14 Show drawer: rises from the bottom bar; the bar stays on top so the eye closes it */
+body.shw .rib { position:relative; z-index:12; }
+.sheet.shw { padding:6px 0 8px; border-radius:18px 18px 0 0; border-top:1px solid var(--line); }
+.sheet.shw::before { content:''; display:block; width:36px; height:4px; border-radius:2px; background:var(--line); margin:4px auto 6px; }
+.shh { display:flex; align-items:center; gap:14px; padding:0 8px 0 18px; } .shh b { flex:1; font-size:16px; }
+.shh a, .shf a { color:var(--pri); font-size:13.5px; text-decoration:none; } .shf a.muted { color:var(--muted); }
+.shs { padding:0 18px 4px; font-size:12px; color:#F2C14E; }
+.shg { padding:10px 18px 2px; font-size:11px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; color:var(--pri); }
+.mi.shr { display:flex; align-items:center; gap:12px; padding:9px 18px; }
+.shr .tx { flex:1; min-width:0; display:flex; flex-direction:column; } .shr .tx b { font-weight:500; font-size:15px; } .shr .tx small { font-size:12px; color:var(--muted); }
+.shr .tgl { width:38px; height:22px; border-radius:11px; } .shr .tgl::after { width:16px; height:16px; top:3px; left:3px; } .shr .tgl.on::after { left:19px; }
+.shc { font-style:normal; font-size:11.5px; color:var(--muted); background:var(--card2); border-radius:10px; padding:1px 8px; }
+.shf { display:flex; justify-content:space-between; padding:10px 18px 4px; } .shn { padding:10px 18px; }
+.bdg.hid { background:#F2C14E; color:#2a1c02; }

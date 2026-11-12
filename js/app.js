@@ -43,7 +43,7 @@
     cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
-  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', win: 'Outside time window', due: 'Overdue & missed' };
+  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived' };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
@@ -117,7 +117,7 @@
   }
   function dueTag(h) {
     var r = rep(h); if (!r) return '';
-    return r.due > 0 ? '<small class="due">(due ' + r.due + 'd)</small>' : view() === 'due' && r.lastMiss ? '<small class="due">(missed)</small>' : '';
+    return r.due > 0 ? '<small class="due">(due ' + r.due + 'd)</small>' : !r.show && r.lastMiss ? '<small class="due">(missed)</small>' : '';
   }
   function cellHtml(h, d) {
     var v = S.val(h.id, d.k), r = rep(h), tdy = d.k === S.today(), sch = scheduled(h, d.dt) || (tdy && r && r.open);
@@ -224,21 +224,40 @@
     var tb = tabOf(h), g = h.parent && S.habit(h.parent), f = S.d.settings;
     if (tb && tb.hidden && !(S.d.ui.showArchTabs && v === tb.id)) return false;   // an archived tab's habits show only while you're in it
     if (v === 'arch') return true;
-    if (f.hideArchived && (h.archived || (g && g.archived))) return false;
-    if (v === 'win' || v === 'due') return true;
-    if (winOf(h)) return false;
-    if (f.hideNotDue !== false && !sel && isRep(h) && !rep(h).show) return false;   // v5.5: a repeat shows only when due (or overdue)
-    if (f.skipDays && f.hideSkipped && !sel && skippedToday(h)) return false;
-    if (f.hideEntered && !sel && enteredToday(h) && !skippedToday(h)) return false;
-    return true;
+    var s = SH(); return cats(h).every(function (c) { return s[c] || (sel && SELOK[c]); });   // v5.14: the eye drawer's switches decide
+  }
+  /* ---- v5.14 Show drawer (eye on the bottom bar): which kinds of item are on the list ---- */
+  var SHOW = [   // key, group, name, what it is
+    ['done', 'Today', 'Done for today', 'Ticked, or target reached'],
+    ['skip', 'Today', 'Skipped today', 'Marked as a skip day'],
+    ['rest', 'Today', 'Resting today', 'Repeats not due today'],
+    ['late', 'Today', 'Running late', 'Still waiting, shown as (due Nd)'],
+    ['past', 'By the clock', 'Time’s up', 'Their window has closed today'],
+    ['soon', 'By the clock', 'Coming up later', 'Their window hasn’t opened yet'],
+    ['gone', 'Put away', 'Missed and gone', 'Let go when their day ended'],
+    ['arch', 'Put away', 'Archived', 'Retired habits']];
+  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, arch: false };
+  var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
+  function SH() {
+    var f = S.d.settings;
+    if (!f.show) f.show = { done: !f.hideEntered, skip: !f.hideSkipped, rest: f.hideNotDue === false, late: true, past: false, soon: false, gone: false, arch: !f.hideArchived };   // from the old Filter
+    if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon'];
+    return f.show;
+  }
+  function cats(h) {   // which drawer kinds this habit falls under right now
+    var g = h.parent && S.habit(h.parent), c = [], w = winOf(h);
+    if (h.archived || (g && g.archived)) c.push('arch');
+    if (w > 0) c.push('past'); else if (w < 0) c.push('soon');
+    if (isRep(h)) { var r = rep(h); if (r.due > 0) c.push('late'); if (!r.show) c.push(r.lastMiss ? 'gone' : 'rest'); }
+    if (S.d.settings.skipDays && skippedToday(h)) c.push('skip');
+    else if (enteredToday(h)) c.push('done');
+    return c;
   }
   // member: does it belong to this view (tab, starred, archived, outside its window)?
   function member(h, v) {
     var g = h.parent && S.habit(h.parent);
     if (v === 'arch') return !!(h.archived || (g && g.archived));
-    if (v === 'win') return winOf(h) !== 0;
     if (v === 'star') return !!(h.star || (g && g.star));
-    if (v === 'due') { var r = rep(h); return !!r && (r.due > 0 || r.lastMiss); }
     if (v === 'all') return tabsMode() === 'off' || !tabOf(h);   // Main = habits with no tab of their own
     var tb = tabOf(h); return !!tb && tb.id === v;
   }
@@ -255,8 +274,36 @@
   }
   var lastWin = '';
   function winSig() { return S.habits().map(function (h) { return winOf(h); }).join(''); }
-  function winCount() {
-    return S.habits().filter(function (h) { var tb = tabOf(h); return winOf(h) !== 0 && !h.archived && !(tb && tb.hidden); }).length;
+  function showCounts(v) {   // per kind, among this view's habits; plus how many are hidden now
+    var s = SH(), n = { hid: 0 };
+    S.habits().forEach(function (h) {
+      var tb = tabOf(h); if (isGroup(h) || (tb && tb.hidden) || !member(h, v)) return;
+      var c = cats(h); c.forEach(function (k) { n[k] = (n[k] || 0) + 1; });
+      if (v !== 'arch' && c.some(function (k) { return !s[k]; })) n.hid++;
+    });
+    return n;
+  }
+  var shwEdit = false;
+  function drawShow() {
+    var s = SH(), f = S.d.settings, u = S.d.ui, full = shwEdit || u.showFull, pin = f.showPin, n = showCounts(view()), g = '', h = '';
+    SHOW.forEach(function (x) {
+      var k = x[0]; if (k === 'skip' && !f.skipDays) return;
+      if (!full && pin.indexOf(k) < 0) return;
+      if (full && x[1] !== g) { g = x[1]; h += '<div class="shg">' + g + '</div>'; }
+      var p = pin.indexOf(k) >= 0, ct = '<em class="shc">' + (n[k] || 0) + '</em>';
+      h += shwEdit
+        ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b><small>' + x[3] + '</small></span>' + ct + '</button>'
+        : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (full ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
+    });
+    if (!h) h = '<p class="small muted shn">Tap the pen to pick the switches you want here.</p>';
+    var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : 'What’s on your list') + '</b>' +
+      (shwEdit ? '' : '<a href="#" data-act="shwFull">' + (u.showFull ? 'Short' : 'See all') + '</a>') +
+      '<button class="ib' + (shwEdit ? ' lit' : '') + '" data-act="shwPen" aria-label="' + (shwEdit ? 'Done' : 'Choose short list') + '">' + (shwEdit ? ICON.check : ICON.pen) + '</button></div>' +
+      '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.hid ? n.hid + ' tucked away' : 'Everything showing') + '</div>' + h +
+      (shwEdit ? '' : '<div class="shf"><a href="#" data-act="shwAll">Show everything</a><a href="#" class="muted" data-act="shwUsual">Back to my usual</a></div>');
+    if (sheetOpen === 'show') { sheet.innerHTML = html; } else showSheet('show', html, 'shw');
+    var rb = root.querySelector('.rib'); sheet.style.bottom = rb ? Math.max(0, innerHeight - rb.getBoundingClientRect().top) + 'px' : '';
+    document.body.classList.add('shw');
   }
 
   var App = {
@@ -271,7 +318,7 @@
       // Top-level habits in order; each group card holds its parent row and (unless folded) its sub-habits.
       var shown = {}; list.forEach(function (h) { shown[h.id] = 1; });
       var rowHtml = function (h, cls, grp) {
-        var wt = (v === 'win' || winOwn(h)) && winTxt(h), cx = grp && ctxGrp(h);
+        var wt = winOwn(h) && winTxt(h), cx = grp && ctxGrp(h);
         if (cx) { grp = false; cls += ' ctx'; }
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
@@ -302,7 +349,7 @@
           var hs = by(t.id); return hs.length ? sec(t.id, t.name, hs) : '';
         }).join('');
       } else rows = tops.map(card).join('');
-      var n = sel ? Object.keys(sel).length : 0, lit = f.hideEntered || !f.hideArchived;
+      var n = sel ? Object.keys(sel).length : 0;
       var bar, logo = '<button class="logo" data-act="home" aria-label="Main"><img src="icons/icon-192.png" alt=""></button>';
       // v5.5 tab strip: Main first, full name on the open tab, short name on the others; side-scrolls
       // Full names; fitChips() swaps inactive tabs to their short names only when the strip runs out of room
@@ -322,30 +369,27 @@
       else if (mode === 'top') bar = '<header class="top tstrip">' + logo + chips + syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + tpan + vbar;
       else bar = '<header class="top">' + logo + '<h1>' + esc(v === 'all' && mode === 'off' ? 'Habits' : VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
-        '<button class="ib' + (lit ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
         syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + vbar;
-      var wc = winCount(), tabV = !VIEW_NAME[v] || v === 'all';
+      var shc = showCounts(v), tabV = !VIEW_NAME[v] || v === 'all';
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
       var ribbon = (mode === 'bottom' && !sel ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
         rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
-        (mode === 'top' ? rb('filter', ICON.filter, 'Filter', lit) + rb('add', ICON.plus, 'Add', false) : '') +
+        rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.hid ? '<i class="bdg hid">' + shc.hid + '</i>' : '') +
+        (mode === 'top' ? rb('add', ICON.plus, 'Add', false) : '') +
         rb('viewArch', ICON.archive, 'Archived', v === 'arch') +
-        rb('viewWin', ICON.clock, 'Later', v === 'win', wc ? '<i class="bdg">' + wc + '</i>' : '') +
         (all.some(isGroup) ? '<button class="rbtn ionly" data-act="foldCycle" aria-label="' + { open: 'All groups expanded', shut: 'All groups collapsed', man: 'Groups as set in Edit' }[foldMode()] + '">' +
           { open: ICON.fOpen, shut: ICON.fShut, man: ICON.fMan }[foldMode()] + '</button>' : '') +
         rb('weight', ICON.scale, 'Weight', false) + '</nav>';
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
         arch: 'No archived habits.',
-        due: 'Nothing overdue or missed.',
-        win: 'Nothing is waiting for its time window right now.'
       }[v];
-      var nd = f.hideNotDue !== false && !list.length ? all.filter(function (h) { return !h.parent && isRep(h) && member(h, v) && !rep(h).show && !(f.hideArchived && h.archived); }).length : 0;
+      var nd = !list.length && !SH().rest ? shc.rest || 0 : 0;
       var demoBar = S.demo ? '<div class="demobar"><span>Demo data · your own habits are safe</span><button class="btn sm" data-act="demoOff">Exit demo</button></div>' : '';
       root.innerHTML = bar + demoBar +
         (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div><div class="swp" id="swp"></div></div>'
           : empty ? '<div class="empty"><p>' + empty + '</p></div>'
-          : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : f.hideEntered ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (nd ? '<p class="small">' + nd + ' repeat' + (nd > 1 ? 's' : '') + ' not due today — Filter shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'filter') + '">' + (tabV ? 'Add a habit to this tab' : 'Filter') + '</button></div>'
+          : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : shc.hid ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (shc.hid ? '<p class="small">' + shc.hid + ' tucked away — the eye below shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'shw') + '">' + (tabV ? 'Add a habit to this tab' : 'What’s on your list') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="starters">Start from examples</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       root.classList.toggle('sublines', f.subLines !== false);
       root.classList.toggle('noscr', f.hScroll === false);
@@ -360,6 +404,7 @@
       fitChips();
       var on = document.querySelector('.tchip.on'); if (on && resetScroll) on.scrollIntoView({ inline: 'center', block: 'nearest' });
       lastWin = winSig();
+      if (sheetOpen === 'show') drawShow();
     },
     refreshRow: function (hid) {   // after a mark: redraw one row's cells, keep scroll
       var h = S.habit(hid); if (!h) return App.render();
@@ -435,7 +480,7 @@
     sheet.scrollTop = 0;
   }
   var closing = false, after = [];
-  function hideSheet() { sheetOpen = null; sheet.hidden = true; scrim.hidden = true; }
+  function hideSheet() { if (sheetOpen === 'show') { shwEdit = false; sheet.style.bottom = ''; document.body.classList.remove('shw'); App.render(); } sheetOpen = null; sheet.hidden = true; scrim.hidden = true; }
   function closeSheet(then) { if (then) after.push(then); if (!sheetOpen) return flush(); if (!closing) { closing = true; history.back(); } }
   function flush() { var q = after; after = []; q.forEach(function (f) { f(); }); }
   window.addEventListener('popstate', function () {
@@ -934,7 +979,7 @@
         }).join('') + '</div></div>' : '') +
       '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two">' + edgeField('From', 'Show from', h.win.from) + edgeField('To', 'Hide after', h.win.to) + '</div>' +
         (/p:/.test(h.win.from + h.win.to) && !prayerToday() ? '<span class="small" style="color:var(--bad)">Set your location in Settings → Prayer times, or prayer-based edges are ignored.</span>' : '') +
-        '<span class="small muted">Outside this time it leaves today’s list; find it under <b>Later</b> on the bottom bar. Leave blank for all day.' +
+        '<span class="small muted">Outside this time it leaves today’s list; the eye on the bottom bar can show it. Leave blank for all day.' +
         (h.win.from || h.win.to ? ' <a href="#" data-act="ef" data-f="winClear">Clear</a>' : '') + '</span></div>' +
       (!h._new ? '<div class="row"><button class="btn danger-o" data-act="delHabit">Delete habit</button></div>' : '') +
       '</div>';
@@ -1038,7 +1083,7 @@
         return '<button class="' + (tabsMode() === m[0] ? 'on' : '') + '" data-act="tabsMode" data-v="' + m[0] + '">' + m[1] + '</button>';
       }).join('') + '</div><p class="small muted" style="margin-top:6px">' + {
         bottom: 'Main and your tabs sit in a strip just above the bottom bar. Hold any tab to add a new one; swipe the blank area below the list to change tab.',
-        top: 'Main and your tabs sit in a strip across the top; Filter and Add move to the bottom bar. Hold any tab to add a new one; swipe the blank area below the list to change tab.',
+        top: 'Main and your tabs sit in a strip across the top; Add moves to the bottom bar. Hold any tab to add a new one; swipe the blank area below the list to change tab.',
         off: 'No tabs: one page with each tab’s name as a header above its habits.' }[tabsMode()] + '</p>' +
       '<h4>Marking</h4>' + tg('shortPress', 'Toggle with short press', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
       tg('skipDays', 'Skip days', 'Yes/no: hold again after a tick to mark a skip (neither done nor missed). Measurable: Skip button in the number box.') +
@@ -1317,8 +1362,13 @@
     home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { toggleView('star'); },
     viewArch: function () { toggleView('arch'); },
-    viewWin: function () { toggleView('win'); },
-    viewDue: function () { closeSheet(function () { toggleView('due'); }); },
+    shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
+    shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
+    shwFull: function () { S.d.ui.showFull = !S.d.ui.showFull; S.saveUi(); drawShow(); },
+    shwPen: function () { shwEdit = !shwEdit; drawShow(); },
+    shwPin: function (el) { var p = S.d.settings.showPin, k = el.dataset.k, i = p.indexOf(k); if (i < 0) p.push(k); else p.splice(i, 1); S.saveSettings(); drawShow(); },
+    shwAll: function () { var s = SH(), st = {}; Object.keys(SHOW_DEF).forEach(function (k) { st[k] = !!s[k]; s[k] = true; }); S.d.ui.showStash = st; S.saveSettings(); S.saveUi(); App.render(); },
+    shwUsual: function () { var st = S.d.ui.showStash || SHOW_DEF; S.d.settings.show = JSON.parse(JSON.stringify(st)); S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
     flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
     tpDone: function () { closeTp(); },
@@ -1371,7 +1421,7 @@
     selArchive: function () {
       var ids = Object.keys(sel), arch = !allArchived();
       ids.forEach(function (id) { var h = S.habit(id); if (h) { h.archived = arch; S.putHabit(h); } });
-      selEnd(function () { App.toast((arch ? 'Archived ' : 'Unarchived ') + ids.length + (arch && S.d.settings.hideArchived ? ' — see them via Filter' : '')); });
+      selEnd(function () { App.toast((arch ? 'Archived ' : 'Unarchived ') + ids.length + (arch && !SH().arch ? ' — the eye below shows them' : '')); });
     },
     selDelete: function () {
       var ids = Object.keys(sel);
@@ -1379,16 +1429,7 @@
         ids.forEach(function (id) { S.delHabit(id); }); selEnd(function () { App.toast('Deleted'); });
       });
     },
-    filter: function () {
-      var f = S.d.settings, row = function (k, label) {
-        return '<button class="mi tg" data-act="fToggle" data-k="' + k + '"><span>' + label + '</span><span class="box' + (f[k] ? ' on' : '') + '">' + (f[k] ? ICON.check : '') + '</span></button>';
-      };
-      var nd = f.hideNotDue !== false, due = S.habits().filter(function (h) { return member(h, 'due'); }).length;
-      showSheet('filter', row('hideArchived', 'Hide archived') + row('hideEntered', 'Hide entered') + (f.skipDays ? row('hideSkipped', 'Hide skip days') : '') +
-        '<button class="mi tg" data-act="fToggle" data-k="hideNotDue"><span>Hide repeats not due today</span><span class="box' + (nd ? ' on' : '') + '">' + (nd ? ICON.check : '') + '</span></button>' +
-        '<button class="mi trow" data-act="viewDue"><span>Overdue &amp; missed</span><small>' + (due || '') + '</small></button>', 'menu');
-    },
-    fToggle: function (el) { var k = el.dataset.k; S.d.settings[k] = k === 'hideNotDue' ? S.d.settings[k] === false : !S.d.settings[k]; S.saveSettings(); App.render(); actions.filter(); },
+    filter: function () { actions.shw(); },
     ef: function (el) {   // edit-form field change
       readInputs();
       var f = el.dataset.f, v = el.dataset.v, h = draft;
@@ -1429,7 +1470,7 @@
         if (sw) S.switchType(h, h.type, tick); S.putHabit(h); if (h.link) fillHifz(false); App.render();
         var rr = rep(h);
         if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
-        else if (rr && !rr.show && S.d.settings.hideNotDue !== false) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
+        else if (rr && !rr.show && !SH().rest) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
       };
       if (back) { done(); openStats(h.id, true); } else closeSheet(done);
     },
