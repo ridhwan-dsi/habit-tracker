@@ -202,12 +202,13 @@
   /* ---- v4 Views: 'all', 'star', a tab id, 'arch' (archived), 'win' (hidden by time window) ---- */
   function tabsMode() { var m = S.d.settings.tabsMode; return m === 'top' || m === 'off' ? m : 'bottom'; }   // tab strip at top, above the bottom bar, or one page
   function visTabs() { return S.tabs().filter(function (t) { return !t.hidden; }); }
+  function stripTabs() { var sa = S.d.ui.showArchTabs; return S.tabs().filter(function (t) { return !t.hidden || sa; }); }   // archived tabs only when "Archived" is flipped on
   function view() {
     var v = S.d.ui.view || 'all';
     if (VIEW_NAME[v]) return v;
-    var t = S.tab(v); return t && !t.hidden && tabsMode() !== 'off' ? v : 'all';
+    var t = S.tab(v); return t && (!t.hidden || S.d.ui.showArchTabs) && tabsMode() !== 'off' ? v : 'all';
   }
-  function tabOrder() { return ['all'].concat(visTabs().map(function (t) { return t.id; })); }
+  function tabOrder() { return ['all'].concat(stripTabs().map(function (t) { return t.id; })); }
   function toggleView(x) {   // Starred / Archived / Later / Overdue: tap again = back to the tab you came from
     var v = view(); if (v === x) return setView(S.d.ui.prev && tabOrder().indexOf(S.d.ui.prev) >= 0 ? S.d.ui.prev : 'all');
     if (tabOrder().indexOf(v) >= 0) S.d.ui.prev = v; setView(x);
@@ -218,7 +219,7 @@
   // base: may this habit be on screen at all right now (hidden tab, archive, time window, entered)?
   function base(h, v) {
     var tb = tabOf(h), g = h.parent && S.habit(h.parent), f = S.d.settings;
-    if (tb && tb.hidden) return false;
+    if (tb && tb.hidden && !(S.d.ui.showArchTabs && v === tb.id)) return false;   // an archived tab's habits show only while you're in it
     if (v === 'arch') return true;
     if (f.hideArchived && (h.archived || (g && g.archived))) return false;
     if (v === 'win' || v === 'due') return true;
@@ -295,9 +296,11 @@
       var n = sel ? Object.keys(sel).length : 0, lit = f.hideEntered || !f.hideArchived;
       var bar, logo = '<button class="logo" data-act="home" aria-label="Main"><img src="icons/icon-192.png" alt=""></button>';
       // v5.5 tab strip: Main first, full name on the open tab, short name on the others; side-scrolls
-      var chips = '<div class="chips" id="chips">' + [{ id: 'all', name: 'Main' }].concat(visTabs()).map(function (t) {
-          return '<button class="tchip' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '">' + esc(v === t.id ? t.name : t.short || t.name) + '</button>';
-        }).join('') + '</div>';   // new tabs: hold any tab → New tab
+      // Full names; fitChips() swaps inactive tabs to their short names only when the strip runs out of room
+      var chips = '<div class="chips' + (tp ? ' editing' : '') + '" id="chips">' + [{ id: 'all', name: 'Main' }].concat(stripTabs()).map(function (t) {
+          return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
+        }).join('') + '</div>';   // new tabs: hold any tab → panel → New
+      var tpan = tp && mode !== 'off' ? tabPanel() : '';
       var gOn = f.starGroups !== false;
       var vbar = v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
         : mode === 'top' && VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '';
@@ -307,14 +310,14 @@
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
-      else if (mode === 'top') bar = '<header class="top tstrip">' + logo + chips + syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + vbar;
+      else if (mode === 'top') bar = '<header class="top tstrip">' + logo + chips + syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + tpan + vbar;
       else bar = '<header class="top">' + logo + '<h1>' + esc(v === 'all' && mode === 'off' ? 'Habits' : VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
         '<button class="ib' + (lit ? ' lit' : '') + '" data-act="filter" aria-label="Filter">' + ICON.filter + '</button>' +
         syncBtn() + '<button class="ib" data-act="menu" aria-label="More">' + ICON.more + '</button></header>' + vbar;
       var wc = winCount(), tabV = !VIEW_NAME[v] || v === 'all';
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
-      var ribbon = (mode === 'bottom' && !sel ? '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
+      var ribbon = (mode === 'bottom' && !sel ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
         rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
         (mode === 'top' ? rb('filter', ICON.filter, 'Filter', lit) + rb('add', ICON.plus, 'Add', false) : '') +
         rb('viewArch', ICON.archive, 'Archived', v === 'arch') +
@@ -343,6 +346,7 @@
       var swp = document.getElementById('swp'); if (swp) swp.style.minHeight = Math.max(96, sc.clientHeight - document.getElementById('grid').offsetHeight - 24) + 'px';   // blank area: swipe to change tab
       if (sc && keep) { sc.scrollLeft = f.hScroll === false ? 0 : keep.l; sc.scrollTop = keep.t; }
       if (sc) { var edge = function () { sc.classList.toggle('hs', sc.scrollLeft > 2); }; sc.addEventListener('scroll', edge, { passive: true }); edge(); }
+      fitChips();
       var on = document.querySelector('.tchip.on'); if (on && resetScroll) on.scrollIntoView({ inline: 'center', block: 'nearest' });
       lastWin = winSig();
     },
@@ -404,6 +408,13 @@
     document.documentElement.style.setProperty('--nw', Math.max(120, w - 4 * CELL) + 'px');
   }
   window.addEventListener('resize', sizeCols);
+  function fitChips() {
+    var box = document.getElementById('chips'); if (!box) return;
+    var cs = [].slice.call(box.querySelectorAll('.tchip[data-full]'));
+    cs.forEach(function (c) { c.textContent = c.dataset.full; });
+    if (box.scrollWidth > box.clientWidth + 1) cs.forEach(function (c) { if (!c.classList.contains('on')) c.textContent = c.dataset.short; });
+  }
+  window.addEventListener('resize', fitChips);
 
   /* ---- Sheets & dialogs (pushState so Android back closes them) ---- */
   var sheetOpen = null, sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim');
@@ -420,7 +431,7 @@
     var wasW = !closing && (sheetOpen === 'wlog' || sheetOpen === 'wset');   // phone Back on a weight dialog → back to the Weight screen
     closing = false;
     if (wasW) { hideSheet(); flush(); return openWeight(true); }
-    if (sheetOpen) hideSheet(); else if (sel) { sel = null; App.render(); }
+    if (sheetOpen) hideSheet(); else if (tp) { tp = null; App.render(); } else if (sel) { sel = null; App.render(); }
     flush();
   });
   scrim.addEventListener('click', function () { closeSheet(); });
@@ -895,6 +906,7 @@
     var g = S.habits().some(isGroup);
     showSheet('menu', 
       (S.tabs().some(function (t) { return t.hidden; }) ? '<button class="mi" data-act="hiddenTabs">Archived tabs</button>' : '') +
+      (tabsMode() === 'off' ? '<button class="mi" data-act="tabsSheet">Tabs</button>' : '') +
       '<button class="mi" data-act="settings">Settings</button>', 'menu');
   }
   function openSettings() {
@@ -1033,9 +1045,67 @@
       '<button class="mi trow add" data-act="moveToNew">' + ICON.plus + '<span>New tab…</span></button>');
   }
   // Hold a tab chip / tab row (450 ms) → its actions. A short tap still opens the tab.
+  /* ---- v5.6 Tab panel: hold a tab → a slim icon panel beside the strip (tabs stay visible, the held one outlined):
+     New · Rename · Archive · Delete · "Archived" flip (archived tabs shown in italics) · Done.
+     While it is open, press and slide a tab sideways to drag it to a new place (Main stays first). Phone Back closes it. ---- */
+  var tp = null;
+  function openTp(id) { if (!tp) history.pushState({ tp: 1 }, ''); tp = { id: id }; App.render(); }
+  function closeTp() { if (tp && !closing) { closing = true; history.back(); } }
+  function tabPanel() {
+    var t = S.tab(tp.id), main = !t, n = t ? tabAll(t.id) : 0, sa = !!S.d.ui.showArchTabs;
+    var ib = function (act, icon, label, dis) { return '<button class="pbtn' + (dis ? ' dis' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span></button>'; };
+    return '<div class="tpanel"><div class="tpbtns">' + ib('newTab', ICON.plus, 'New') + ib('tpRename', ICON.pen, 'Rename', main) +
+      ib('tpArchive', t && t.hidden ? ICON.unarchive : ICON.archive, t && t.hidden ? 'Unarchive' : 'Archive', main) + ib('tpDelete', ICON.bin, 'Delete', main || n > 0) +
+      '<button class="flip pflip" data-act="tpArchShow" aria-pressed="' + sa + '"><i class="tgl' + (sa ? ' on' : '') + '"></i><span>Archived</span></button>' +
+      ib('tpDone', ICON.check, 'Done') + '</div><p class="tphint">' + esc(main ? 'Main' : t.name) + ' · drag tabs sideways to reorder</p></div>';
+  }
+  function reorderTabs(ids) {
+    var all = S.tabs(), shown = {}, q = ids.slice(), now = Date.now(); ids.forEach(function (id) { shown[id] = 1; });
+    all.map(function (t) { return shown[t.id] ? q.shift() : t.id; }).forEach(function (id, i) { var t = S.d.tabs[id]; if (t && t.order !== i + 1) { t.order = i + 1; t.u = now; } });
+    S.save();
+  }
+  var cd = null;   // a press on a tab chip: hold → panel; with the panel open, slide sideways → drag
+  document.addEventListener('pointerdown', function (e) {
+    var el = e.target.closest('.tchip[data-tab]'); if (!el || e.button > 0 || sheetOpen || sel) return;
+    thQuiet = false; cd = { el: el, id: el.dataset.tab, x: e.clientX, y: e.clientY, armed: !!tp, drag: false };
+    cd.t = setTimeout(function () {
+      if (!cd || cd.drag) return; cd.armed = true; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20);
+      if (tp) { tp.id = cd.id; App.render(); } else openTp(cd.id);
+      cd.el = document.querySelector('.tchip[data-tab="' + cd.id + '"]');
+    }, HOLD);
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!cd) return; var dx = e.clientX - cd.x, dy = e.clientY - cd.y;
+    if (cd.drag) return chipMove(e);
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    if (cd.armed && cd.id !== 'all' && Math.abs(dx) > Math.abs(dy)) { clearTimeout(cd.t); chipStart(e); } else { clearTimeout(cd.t); cd = null; }
+  });
+  document.addEventListener('touchmove', function (e) { if (cd && cd.armed) e.preventDefault(); }, { passive: false });
+  ['pointerup', 'pointercancel'].forEach(function (n) { document.addEventListener(n, function () {
+    if (!cd) return; clearTimeout(cd.t); var d = cd; cd = null;
+    if (d.drag) { thQuiet = true; chipEnd(d); }
+  }); });
+  function chipStart(e) {
+    var el = cd.el; cd.drag = true; tp.id = cd.id; el.classList.add('cdrag');
+    cd.grab = e.clientX - el.getBoundingClientRect().left; chipMove(e);
+  }
+  function chipMove(e) {
+    var el = cd.el, box = el.parentNode, want = e.clientX - cd.grab;
+    var nat = function (c) { return box.getBoundingClientRect().left - box.scrollLeft + c.offsetLeft; };
+    var prev = el.previousElementSibling, next = el.nextElementSibling;
+    if (prev && prev.dataset.tab !== 'all' && want < nat(prev) + prev.offsetWidth / 2) box.insertBefore(el, prev);
+    else if (next && next.dataset.tab && want + el.offsetWidth > nat(next) + next.offsetWidth / 2) box.insertBefore(next, el);
+    var r = box.getBoundingClientRect(); if (e.clientX < r.left + 30) box.scrollLeft -= 8; else if (e.clientX > r.right - 30) box.scrollLeft += 8;
+    el.style.transform = 'translateX(' + (want - nat(el)) + 'px)';
+  }
+  function chipEnd(d) {
+    var ids = [].map.call(d.el.parentNode.querySelectorAll('.tchip[data-tab]'), function (c) { return c.dataset.tab; }).filter(function (id) { return id !== 'all'; });
+    reorderTabs(ids); App.render();
+  }
+
   var th = null, thQuiet = false;
   document.addEventListener('pointerdown', function (e) {
-    var el = e.target.closest('.tchip[data-tab], [data-hold]'); if (!el || e.button > 0) return;   // Main: only New tab
+    var el = e.target.closest('[data-hold]'); if (!el || e.button > 0) return;   // tab rows in the Tabs / Archived tabs sheets
     thQuiet = false;
     th = { x: e.clientX, y: e.clientY, t: setTimeout(function () { th = null; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20); var id = el.dataset.hold || el.dataset.tab; if (sheetOpen) closeSheet(function () { openTabActs(id); }); else openTabActs(id); }, HOLD) };
   });
@@ -1133,8 +1203,23 @@
     viewDue: function () { closeSheet(function () { toggleView('due'); }); },
     flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
+    tpDone: function () { closeTp(); },
+    tpRename: function () { var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be renamed'); askTabName(t); },
+    tpArchive: function () {
+      var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be archived');
+      t.hidden = !t.hidden; S.putTab(t);
+      if (t.hidden && !S.d.ui.showArchTabs) { tp.id = 'all'; if (view() === 'all') S.d.ui.view = 'all'; }
+      App.render(); App.toast(t.hidden ? 'Archived “' + t.name + '”' + (S.d.ui.showArchTabs ? '' : ' — flip “Archived” to see it') : '“' + t.name + '” is back');
+    },
+    tpDelete: function () {
+      var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be deleted');
+      var n = tabAll(t.id); if (n) return App.toast('Only an empty tab can be deleted — it has ' + n + ' habit' + (n > 1 ? 's' : '') + ' (archived count)');
+      confirmBox('Delete tab “' + t.name + '”?', 'Delete', function () { S.delTab(t.id); tp.id = 'all'; App.render(); App.toast('Tab deleted'); });
+    },
+    tpArchShow: function () { S.d.ui.showArchTabs = !S.d.ui.showArchTabs; S.saveUi(); App.render(); },
     goTab: function (el) {
       if (thQuiet) { thQuiet = false; return; }
+      if (tp) tp.id = el.dataset.tab;
       var id = el.dataset.tab, go = function () { setView(id); };
       if (sheetOpen) closeSheet(go); else go();
     },

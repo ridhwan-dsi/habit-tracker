@@ -307,3 +307,17 @@ a.btn { text-decoration:none; display:inline-flex; align-items:center; }
 #app:has(.bstrip) ~ #toast { bottom:calc(122px + env(safe-area-inset-bottom)); }
 .mi > .i { width:18px; height:18px; vertical-align:-4px; margin-right:8px; }
 .ftin { display:flex; align-items:center; gap:6px; } .ftin input { width:100%; min-width:0; } .ftin em { font-style:normal; color:var(--muted); font-size:13px; }
+/* v5.6 tab panel (hold a tab), drag to reorder, archived tabs in italics */
+.chips { position:relative; }
+.chips.editing .tchip { touch-action:none; }
+.tchip.arch { font-style:italic; opacity:.75; }
+.tchip.tsel { box-shadow:inset 0 0 0 2px var(--pri); } .tchip.on.tsel { box-shadow:inset 0 0 0 2px var(--ink); }
+.tchip.cdrag { position:relative; z-index:2; box-shadow:0 6px 16px rgba(0,0,0,.45), inset 0 0 0 2px var(--pri); }
+.tpanel { flex:none; background:var(--card); border-top:1px solid var(--line); padding:6px 8px 4px; }
+.tstrip + .tpanel { border-top:0; border-bottom:1px solid var(--line); }
+.tpbtns { display:flex; align-items:stretch; gap:2px; }
+.pbtn { flex:1; min-width:0; border:0; background:none; color:var(--ink); font:inherit; font-size:10.5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:4px 0; border-radius:10px; cursor:pointer; min-height:50px; }
+.pbtn:active, .pflip:active { background:var(--line); } .pbtn.dis { color:var(--dim); }
+.pflip { flex:1; flex-direction:column; justify-content:center; gap:7px; font-size:10.5px; color:var(--ink); padding:4px 0; border-radius:10px; }
+.tphint { margin:2px 4px 0; font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#app:has(.bstrip):has(.tpanel) ~ #toast { bottom:calc(196px + env(safe-area-inset-bottom)); }
