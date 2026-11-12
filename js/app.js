@@ -21,6 +21,7 @@
     filter: '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>',
     pen: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
     palette: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.1 0-.9.7-1.5 1.6-1.5H17a4 4 0 004-4c0-4.9-4-8.8-9-8.8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg>',
+    doneDay: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4M8.5 14.5l2.5 2.5 4.5-4.5"/></svg>',
     hide: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-3 3.4M6.3 7.8C4.1 9.4 3 12 3 12s4 6 9 6a8.6 8.6 0 0 0 3.4-.7M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
     unhide: '<svg class="i" viewBox="0 0 24 24"><path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="3"/></svg>',
     archive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg>',
@@ -47,7 +48,7 @@
     cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
-  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived' };
+  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', done: 'Done today' };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
@@ -167,7 +168,12 @@
      Tapping a group overrides it until the mode changes (ui.fx). In 'shut', opening one group closes the others. */
   function foldMode() { return S.d.ui.foldMode || 'man'; }
   // Starred view: a group that isn't starred itself only frames its starred sub-habits — always open, italic, can't be edited or selected.
-  function ctxGrp(h) { return !!h && view() === 'star' && !h.parent && !h.star && isGroup(h); }
+  function ctxGrp(h) { var v = !!h && view(); return v === 'star' ? !h.parent && !h.star && isGroup(h) : v === 'done' ? !h.parent && isGroup(h) && !doneToday(h) : false; }
+  // v5.19: 'Done today' view — everything finished today, hidden ones included (not archived, not skipped)
+  function doneToday(h) { return enteredToday(h) && !skippedToday(h); }
+  // v5.19: Starred has its own drag order (settings.starOrd), separate from the real order
+  function starRank(id) { var o = S.d.settings.starOrd || [], i = o.indexOf(id); return i < 0 ? 1e6 + ((S.habit(id) || {}).order || 0) : i; }
+  function byStar(a, b) { return starRank(a.id) - starRank(b.id); }
   function folded(id) {
     if (ctxGrp(S.habit(id))) return false;
     var fx = S.d.ui.fx || {}, m = foldMode(), h = S.habit(id);
@@ -228,6 +234,7 @@
     var tb = tabOf(h), g = h.parent && S.habit(h.parent), f = S.d.settings;
     if (tb && tb.hidden && !(S.d.ui.showArchTabs && v === tb.id)) return false;   // an archived tab's habits show only while you're in it
     if (v === 'arch') return true;
+    if (v === 'done') return !(h.archived || (g && g.archived));
     var s = SH(); return cats(h).every(function (c) { return s[c] || (sel && SELOK[c]); });   // v5.14: the eye drawer's switches decide
   }
   /* ---- v5.14 Show drawer (eye on the bottom bar): which kinds of item are on the list ---- */
@@ -268,6 +275,7 @@
     var g = h.parent && S.habit(h.parent);
     if (v === 'arch') return !!(h.archived || (g && g.archived));
     if (v === 'star') return !!(h.star || (g && g.star));
+    if (v === 'done') return doneToday(h);
     if (v === 'all') return tabsMode() === 'off' || !tabOf(h);   // Main = habits with no tab of their own
     var tb = tabOf(h); return !!tb && tb.id === v;
   }
@@ -278,7 +286,7 @@
       if (h.parent && S.habit(h.parent)) return;
       if (!base(h, v)) return;
       var ss = subs(h.id).filter(function (x) { return base(x, v) && member(x, v); });
-      if (h.endAll && v !== 'arch' && liveSubs(h.id).length && !liveSubs(h.id).some(function (x) { return base(x, v); })) return;   // every sub-habit done / time's up / put away
+      if (h.endAll && v !== 'arch' && v !== 'done' && liveSubs(h.id).length && !liveSubs(h.id).some(function (x) { return base(x, v); })) return;   // every sub-habit done / time's up / put away
       if (member(h, v) || ss.length) { if (member(h, v) || v !== 'star' || S.d.settings.starGroups !== false) keep[h.id] = 1; ss.forEach(function (x) { keep[x.id] = 1; }); }
     });
     return all.filter(function (h) { return keep[h.id]; });
@@ -341,11 +349,13 @@
       };
       var card = function (h) {
         var grp = isGroup(h), ss = grp && !folded(h.id) ? subs(h.id).filter(function (x) { return shown[x.id]; }) : [];
+        if (v === 'star') ss.sort(byStar);
         return '<div class="grp' + (grp ? ' isgrp' : '') + '" data-grp="' + h.id + '">' +
           rowHtml(h, ' gtop rt' + (ss.length ? '' : ' rb'), grp) +
           ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>';
       };
       var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent) || !shown[h.parent]; }), rows;
+      if (v === 'star') tops.sort(byStar);
       if (mode === 'off' && (v === 'all' || v === 'star') && S.tabs().length) {
         // One page, a header per tab: habits with no tab first, then each tab's habits under its name.
         // SL 41: tap a header to fold/unfold that tab's section (ui.secFold, this phone only); headers stay pinned under the date row.
@@ -386,6 +396,7 @@
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
       var ribbon = (mode === 'bottom' && !sel ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
         rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
+        rb('doneToggle', ICON.doneDay, 'Done', v === 'done') +
         rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.hid ? '<i class="bdg hid">' + shc.hid + '</i>' : '') +
         (mode === 'top' ? rb('add', ICON.plus, 'Add', false) : '') +
         rb('overview', ICON.chart, 'Stats', sheetOpen === 'ov') +
@@ -394,6 +405,7 @@
         rb('weight', ICON.scale, 'Weight', false) + '</nav>';
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
+        done: 'Nothing done yet today.',
         arch: 'No archived habits.',
       }[v];
       var nd = !list.length && !SH().rest ? shc.rest || 0 : 0;
@@ -675,6 +687,7 @@
     d.row.classList.remove('drag'); d.row.style.transform = '';
     if (cancel) return App.render();
     var ids = [].map.call(document.querySelectorAll('#grid .hrow'), function (r) { return r.dataset.row; });
+    if (view() === 'star') { S.d.settings.starOrd = ids.concat((S.d.settings.starOrd || []).filter(function (id) { return ids.indexOf(id) < 0 && S.habit(id); })); S.save(); return App.render(); }   // own order, real order untouched
     S.reorder(ids); App.render();
   }
 
@@ -1509,6 +1522,7 @@
     secFold: function (el) { var F = S.d.ui.secFold = S.d.ui.secFold || {}, id = el.getAttribute('data-sec'); if (F[id]) delete F[id]; else F[id] = 1; S.saveUi(); App.render(); },
     home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { toggleView('star'); },
+    doneToggle: function () { toggleView('done'); },
     viewArch: function () { toggleView('arch'); },
     shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
     shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
