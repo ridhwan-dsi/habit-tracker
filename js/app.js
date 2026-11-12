@@ -21,6 +21,8 @@
     filter: '<svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>',
     pen: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>',
     palette: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.1 0-.9.7-1.5 1.6-1.5H17a4 4 0 004-4c0-4.9-4-8.8-9-8.8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg>',
+    hide: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-3 3.4M6.3 7.8C4.1 9.4 3 12 3 12s4 6 9 6a8.6 8.6 0 0 0 3.4-.7M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+    unhide: '<svg class="i" viewBox="0 0 24 24"><path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="3"/></svg>',
     archive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg>',
     unarchive: '<svg class="i" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M12 17v-6M9.5 13.5L12 11l2.5 2.5"/></svg>',
     bin: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
@@ -237,20 +239,23 @@
     ['past', 'By the clock', 'Time’s up', 'Their window has closed today'],
     ['soon', 'By the clock', 'Coming up later', 'Their window hasn’t opened yet'],
     ['gone', 'Put away', 'Missed and gone', 'Let go when their day ended'],
+    ['hid', 'Put away', 'Hidden', 'Active habits kept off the list — still counted in Stats'],
     ['arch', 'Put away', 'Archived', 'Retired habits'],
     ['bad', 'Kind', 'Bad habits', 'Habits you are cutting down']];
-  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, arch: false, bad: true };
+  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true };
   var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
   function SH() {
     var f = S.d.settings;
     if (!f.show) f.show = { done: !f.hideEntered, skip: !f.hideSkipped, rest: f.hideNotDue === false, late: true, past: false, soon: false, gone: false, arch: !f.hideArchived };   // from the old Filter
     if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon', 'bad'];
     if (f.show.bad === undefined) { f.show.bad = true; if (f.showPin.indexOf('bad') < 0) f.showPin.push('bad'); }   // v5.17
+    if (f.show.hid === undefined) { f.show.hid = false; if (f.showPin.indexOf('hid') < 0) f.showPin.push('hid'); }   // v5.18
     return f.show;
   }
   function cats(h) {   // which drawer kinds this habit falls under right now
     var g = h.parent && S.habit(h.parent), c = [], w = winOf(h);
     if (h.archived || (g && g.archived)) c.push('arch');
+    else if (h.hid || (g && g.hid)) c.push('hid');
     if (h.kind === 'bad') c.push('bad');
     if (w > 0) c.push('past'); else if (w < 0) c.push('soon');
     if (isRep(h)) { var r = rep(h); if (r.due > 0) c.push('late'); if (!r.show) c.push(r.lastMiss ? 'gone' : 'rest'); }
@@ -369,6 +374,7 @@
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
+        '<button class="ib" data-act="selHide" aria-label="' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
@@ -452,6 +458,9 @@
   function allStarred() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.star; }); }
   function selIn() { return sel ? S.habits().filter(function (h) { return sel[h.id] && !isGroup(h); }).map(function (h) { return h.id; }) : []; }   // display order
   function selOut() { return sel ? S.habits().filter(function (h) { return sel[h.id] && h.parent && S.habit(h.parent); }).map(function (h) { return h.id; }) : []; }
+  // v5.18: a Hidden (still active) habit with history must be archived before it can be deleted
+  function lockedDel(id) { var h = S.habit(id); if (!h || h.archived || !h.hid) return false; return S.countEntries(id) > 0 || subs(id).some(function (x) { return !x.archived && S.countEntries(x.id) > 0; }); }
+  function allHidden() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.hid; }); }
   function allArchived() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.archived; }); }
   function selStart(id) {
     if (!sel) { sel = {}; history.pushState({ sel: 1 }, ''); }
@@ -672,7 +681,7 @@
   /* ---- v7 Stats page: tap a habit's name (groups: chart button in Edit). Pen opens Edit; Edit's back/Save return here. ---- */
   var stId = null, stMon = 0;
   function startOf(h) {   // creation time from the id, or the first entry, whichever is earlier
-    var ids = [h.id].concat(isGroup(h) ? subs(h.id).map(function (x) { return x.id; }) : []), t = S.todayDate(), best = t;
+    var ids = [h.id].concat(isGroup(h) ? liveSubs(h.id).map(function (x) { return x.id; }) : []), t = S.todayDate(), best = t;
     ids.forEach(function (id) {
       var ms = parseInt(String(id).slice(0, -4), 36); if (ms > 1.6e12 && ms < Date.now() + 864e5) { var c = new Date(ms); c.setHours(12, 0, 0, 0); if (c < best) best = c; }
       Object.keys(S.d.entries).forEach(function (k) { if (k.indexOf(id + '|') === 0) { var p = k.slice(id.length + 1).split('-'), d = new Date(+p[0], +p[1] - 1, +p[2], 12); if (d < best) best = d; } });
@@ -1105,6 +1114,7 @@
         (/p:/.test(h.win.from + h.win.to) && !prayerToday() ? '<span class="small" style="color:var(--bad)">Set your location in Settings → Prayer times, or prayer-based edges are ignored.</span>' : '') +
         '<span class="small muted">Outside this time it leaves today’s list; the eye on the bottom bar can show it. Leave blank for all day.' +
         (h.win.from || h.win.to ? ' <a href="#" data-act="ef" data-f="winClear">Clear</a>' : '') + '</span></div>' +
+      '<button class="mi tg flat" data-act="ef" data-f="hid"><span>Hidden<br><span class="small muted">Still active and counted in Stats, just kept off the list. The eye on the bottom bar → Hidden shows it.' + (inG ? '' : grp ? ' Hides the whole group.' : '') + '</span></span><span class="box' + (h.hid ? ' on' : '') + '">' + (h.hid ? ICON.check : '') + '</span></button>' +
       (!h._new ? '<div class="row"><button class="btn danger-o" data-act="delHabit">Delete habit</button></div>' : '') +
       '</div>';
     if (sheetOpen === 'edit') { sheet.innerHTML = html; } else showSheet('edit', html, 'page');
@@ -1429,6 +1439,11 @@
       App.toast({ open: 'All groups expanded', shut: 'All groups collapsed', man: 'Each group as set in Edit' }[next]);
     },
     selDone: function () { selEnd(); },
+    selHide: function () {
+      var ids = Object.keys(sel), on = !allHidden();
+      ids.forEach(function (id) { var h = S.habit(id); if (h) { h.hid = on; S.putHabit(h); } });
+      selEnd(function () { App.toast((on ? 'Hidden ' : 'Unhidden ') + ids.length + (on && !SH().hid ? ' — the eye below shows them' : '')); });
+    },
     selStar: function () {
       var ids = Object.keys(sel), on = !allStarred();
       ids.forEach(function (id) { var h = S.habit(id); if (h) { h.star = on; S.putHabit(h); } });
@@ -1557,7 +1572,8 @@
       selEnd(function () { App.toast((arch ? 'Archived ' : 'Unarchived ') + ids.length + (arch && !SH().arch ? ' — the eye below shows them' : '')); });
     },
     selDelete: function () {
-      var ids = Object.keys(sel);
+      var ids = Object.keys(sel), lk = ids.filter(lockedDel);
+      if (lk.length) return App.toast((lk.length === 1 ? '“' + S.habit(lk[0]).name + '” is hidden but has history' : lk.length + ' hidden habits have history') + ' — archive first, then delete');
       confirmBox('Delete ' + (ids.length === 1 ? '“' + S.habit(ids[0]).name + '”' : ids.length + ' habits') + ' and all history? This can’t be undone.', 'Delete', function () {
         ids.forEach(function (id) { S.delHabit(id); }); selEnd(function () { App.toast('Deleted'); });
       });
@@ -1571,6 +1587,7 @@
       else if (f === 'kind') { h.kind = v; if (!h._ttSet) h.tt = v === 'bad' ? 'max' : 'min'; }
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
       else if (f === 'endAll') h.endAll = !h.endAll;
+      else if (f === 'hid') h.hid = !h.hid;
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') {
         h.freq.t = v;
@@ -1618,6 +1635,7 @@
     },
     delHabit: function () {
       var id = draft.id, name = draft.name;
+      if (lockedDel(id)) return App.toast('Hidden with history — archive it first, then delete');
       closeSheet(function () {
         var g = S.habit(id) && isGroup(S.habit(id));
         confirmBox('Delete “' + name + '” and all its history?' + (g ? ' Its sub-habits stay, as normal habits.' : ''), 'Delete', function () { S.delHabit(id); App.render(); App.toast('Deleted'); });
