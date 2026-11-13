@@ -54,7 +54,70 @@
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
-  function met(h, v) { var tg = h.target, it = SPT && (SPT.sprint.items || {})[h.id]; if (it && it.m === 'day' && it.t != null && h.type === 'num') tg = it.t; return h.tt === 'max' ? v <= tg : v >= tg; }   // v5.22: inside a sprint tab its per-day target decides
+  function met(h, v, k) { var tg = h.target, it = SPT && (SPT.sprint.items || {})[h.id]; if (k && bookOn(h) && h.book.end && k >= h.book.a) tg = bookNeed(h, k); if (it && it.m === 'day' && it.t != null && h.type === 'num') tg = it.t; return h.tt === 'max' ? v <= tg : v >= tg; }   // v5.22: inside a sprint tab its per-day target decides; v5.24: a book's target = pace needed that day
+  /* ---- v5.24 Book: a measurable habit can carry a book. h.book = { on, title, showT, total, p0 (page he was on at the start),
+     a (start day), end (finish by), hist: [{t, n, p0, a, f, read}] }. Entries stay "pages read that day"; the page reached is
+     p0 + pages read since a. The day's target = pages left at the start of that day ÷ days left (that day to end, inclusive). ---- */
+  var BKC = {};
+  function bookOn(h) { return !!(h && h.type === 'num' && h.book && h.book.on && h.book.total > 0 && h.book.a); }
+  function dayDiff(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5); }
+  function addDays(k, n) { var d = new Date(k + 'T12:00:00'); d.setDate(d.getDate() + n); return S.key(d); }
+  function fmtK(k) { var d = new Date(k + 'T12:00:00'); return d.getDate() + ' ' + d.toLocaleString('en', { month: 'short' }) + (d.getFullYear() !== S.todayDate().getFullYear() ? ' ' + d.getFullYear() : ''); }
+  function bookRead(h) {   // [[day, pages]] since the start day, oldest first
+    if (BKC[h.id]) return BKC[h.id];
+    var pre = h.id + '|', E = S.d.entries, a = h.book.a, L = [];
+    Object.keys(E).forEach(function (x) { if (x.indexOf(pre) !== 0) return; var k = x.slice(pre.length), e = E[x]; if (k >= a && e && !e.d && e.v != null) L.push([k, +e.v]); });
+    L.sort(function (x, y) { return x[0] < y[0] ? -1 : 1; });
+    return (BKC[h.id] = L);
+  }
+  function bookBefore(h, k) { var n = 0; bookRead(h).forEach(function (r) { if (r[0] < k) n += r[1]; }); return n; }
+  function bookNeed(h, k) {   // pages to read on day k to finish by the end date (0 = finished)
+    var b = h.book, left = b.total - b.p0 - bookBefore(h, k); if (left <= 0) return 0;
+    if (!b.end) return h.target || 1;
+    var dl = dayDiff(k, b.end) + 1; return dl >= 1 ? Math.ceil(left / dl) : left;
+  }
+  function bookInfo(h) {
+    var b = h.book, t = S.today(), rd = 0, last = null, todayV = null;
+    bookRead(h).forEach(function (r) { if (r[0] <= t) { rd += r[1]; if (r[1] > 0) last = r[0]; } if (r[0] === t) todayV = r[1]; });
+    var cur = Math.min(b.total, b.p0 + rd), left = Math.max(0, b.total - cur), el = t < b.a ? 0 : dayDiff(b.a, t) + 1, avg = el ? rd / el : 0;
+    var dl = b.end ? dayDiff(t, b.end) + 1 - (todayV ? 1 : 0) : null;   // today counts as a day left until something is logged
+    var need = dl == null ? null : left <= 0 ? 0 : dl >= 1 ? left / dl : left;
+    var orig = b.end ? (b.total - b.p0) / Math.max(1, dayDiff(b.a, b.end) + 1) : null;
+    var fin = avg > 0 && left > 0 ? addDays(t, Math.ceil(left / avg) - (todayV ? 0 : 1)) : null;
+    return { cur: cur, left: left, read: rd, el: el, avg: avg, dl: dl, need: need, orig: orig, fin: fin, last: last };
+  }
+  function f1(x) { return Math.round(x * 10) / 10; }
+  function bookCard(h) {
+    var b = h.book, i = bookInfo(h), pct = Math.min(100, Math.round(100 * i.cur / b.total));
+    var T = [['Pages left', i.left, ''], ['Needed now', i.need == null ? '–' : f1(i.need) + '/day', i.need != null && i.orig != null && i.left ? (i.need > i.orig + 0.05 ? 'down' : 'up') : ''],
+      ['Original plan', i.orig == null ? '–' : f1(i.orig) + '/day', ''], ['Your average', f1(i.avg) + '/day', ''],
+      ['Weekly average', Math.round(i.avg * 7) + '/wk', ''], ['Finish at this pace', i.left <= 0 ? 'Done' : i.fin ? fmtK(i.fin) : '–', i.fin && b.end ? (i.fin > b.end ? 'down' : 'up') : '']];
+    var o = '<section class="stc bkc"><h4>Book' + (b.title ? ' · ' + esc(b.title) : '') + '</h4>' +
+      '<div class="bkbar"><i style="width:' + pct + '%;background:' + esc(h.color) + '"></i></div>' +
+      '<p class="small muted" style="margin:6px 0 10px">p. ' + i.cur + ' of ' + b.total + ' · ' + i.read + ' read since ' + fmtK(b.a) + (b.end ? ' · ' + (i.left > 0 ? Math.max(0, dayDiff(S.today(), b.end) + 1) + ' days left' : 'due ' + fmtK(b.end)) : '') + '</p>' +
+      '<div class="tiles">' + T.map(function (x) { return '<div class="tile"><span>' + x[0] + '</span><b' + (x[2] ? ' class="' + x[2] + '"' : '') + '>' + x[1] + '</b></div>'; }).join('') + '</div>';
+    if (i.left <= 0) o += '<p>Finished' + (i.last ? ' on ' + fmtK(i.last) : '') + '.</p><div class="row"><button class="btn" data-act="bookEnd" data-v="again">Read again</button><button class="btn pri" data-act="bookEnd" data-v="new">Start a new book</button></div>';
+    else o += '<div class="row" style="margin-top:10px"><button class="btn sm" data-act="bookEnd" data-v="new">Switch to a new book</button></div>';
+    if ((b.hist || []).length) o += '<h4 style="margin-top:14px">Earlier books</h4>' + b.hist.slice().reverse().map(function (x) {
+      var d = Math.max(1, dayDiff(x.a, x.f) + 1);
+      return '<div class="wrow"><span>' + esc(x.t || 'Untitled') + '</span><em>' + fmtK(x.a) + ' – ' + fmtK(x.f) + ' · ' + d + ' days · ' + f1(x.read / d) + '/day</em></div>';
+    }).join('');
+    return o + '</section>';
+  }
+  function tgRow(f, title, note, on) { return '<button class="mi tg flat" data-act="ef" data-f="' + f + '"><span>' + title + (note ? '<br><span class="small muted">' + note + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>'; }
+  function bookFields(h) {
+    var b = h.book || {}, on = !!b.on;
+    var o = tgRow('book', 'Book', 'Reading a book: pages left and the pace needed to finish by a date. The daily target follows that pace.', on);
+    if (!on) return o + tgRow('pick', 'Number picker', 'The number box gets a row of numbers to swipe (steps of the default value).', h.pick);
+    return o + '<label class="fl">Title (optional)<input id="fBkT" value="' + esc(b.title || '') + '" autocomplete="off"></label>' +
+      tgRow('bookT', 'Show the title under the habit name', '', b.showT) +
+      '<div class="two"><label class="fl">Total pages<input id="fBkN" inputmode="numeric" value="' + (b.total || '') + '" autocomplete="off"></label>' +
+      '<label class="fl">' + (b.total && (b.hist || b.a < S.today()) ? 'Page at start' : 'Page you’re on') + '<input id="fBkP" inputmode="numeric" value="' + (b.p0 || 0) + '" autocomplete="off"></label></div>' +
+      '<div class="two"><label class="fl">Start date<input id="fBkA" type="date" value="' + esc(b.a || S.today()) + '"></label>' +
+      '<label class="fl">Finish by<input id="fBkE" type="date" value="' + esc(b.end || '') + '"></label></div>' +
+      '<span class="small muted">Counting starts from that page on the start date, so a half-read book works. Each day’s target = pages left ÷ days left' +
+      (b.end ? '' : ' (until you set Finish by, the Target above is used)') + '. Log pages read; the number box shows the page you reach.</span>';
+  }
   /* ---- v5.5 Repeats (Google Tasks style) and "If not done". Occurrences come from a fixed schedule (every N days /
      weeks on chosen weekdays / months on a date) or from the day it was last done (every N days after done).
      If not done: 'drop' = missed when its day ends; 'stay' = stays due (red "due Nd") until done, its next turn, or keep days.
@@ -84,9 +147,9 @@
     var d = fromDn(n), t = new Date(d.getFullYear(), d.getMonth() + ev, 1, 12), last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
     t.setDate(Math.min(d.getDate(), last)); return dn(t);
   }
-  function doneOn(h, k) { if (isGroup(h)) return groupRes(h, k).ok; var v = S.val(h.id, k); return v != null && (h.type === 'yn' ? !!v : met(h, v)); }
+  function doneOn(h, k) { if (isGroup(h)) return groupRes(h, k).ok; var v = S.val(h.id, k); return v != null && (h.type === 'yn' ? !!v : met(h, v, k)); }
   var RC = null;   // repeat status per habit; cleared on every save and render
-  var _save = S.save; S.save = function () { RC = null; return _save.apply(S, arguments); };
+  var _save = S.save; S.save = function () { RC = null; BKC = {}; return _save.apply(S, arguments); };
   function rep(h) {
     if (!isRep(h)) return null; RC = RC || {}; if (RC[h.id]) return RC[h.id];
     var f = fq(h), m = missOf(h), stay = m.t === 'stay' && h.kind !== 'bad', keep = stay && m.keep > 0 ? m.keep : 0;
@@ -134,7 +197,7 @@
       if (v) { cls += h.kind === 'bad' ? ' bad' : ' ok'; inner = ICON.tick; } else inner = ICON.cross;
     } else {
       var has = v != null;
-      if (has) cls += h.kind === 'bad' ? (met(h, v) ? ' nb' : ' bad') : (met(h, v) ? ' ok' : ' part');
+      if (has) cls += h.kind === 'bad' ? (met(h, v, d.k) ? ' nb' : ' bad') : (met(h, v, d.k) ? ' ok' : ' part');
       inner = '<b>' + (has ? num(v) : 0) + '</b>' + (h.unit ? '<i>' + esc(h.unit) + '</i>' : '');
     }
     return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
@@ -145,7 +208,7 @@
   function subs(id) { return S.habits().filter(function (x) { return x.parent === id; }); }
   function liveSubs(id) { return subs(id).filter(function (x) { return !x.archived; }); }
   function isGroup(h) { return !h.parent && subs(h.id).length > 0; }
-  function subDone(x, k) { var v = S.val(x.id, k); return v != null && (x.type === 'yn' ? !!v : met(x, v)); }
+  function subDone(x, k) { var v = S.val(x.id, k); return v != null && (x.type === 'yn' ? !!v : met(x, v, k)); }
   function groupRes(h, k) {
     var ss = liveSubs(h.id).filter(function (x) { return !S.skipped(x.id, k); }), sum = 0, done = 0;   // a skipped sub-habit doesn't count
     ss.forEach(function (x) { var v = S.val(x.id, k); if (v != null) sum += x.type === 'yn' ? (v ? 1 : 0) : v; if (subDone(x, k)) done++; });
@@ -500,7 +563,7 @@
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span style="color:' + esc(scol || h.color) + '">' + esc(h.name) + dueTag(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
+          '<span style="color:' + esc(scol || h.color) + '">' + esc(h.name) + dueTag(h) + (bookOn(h) && h.book.showT && h.book.title ? '<small class="wt">' + esc(h.book.title) + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -616,7 +679,7 @@
     if (S.skipped(h.id, S.today())) return true;
     var v = S.val(h.id, S.today());
     if (v == null) return false;
-    return h.type === 'yn' ? !!v : met(h, v);   // measurable leaves only once today's target is met
+    return h.type === 'yn' ? !!v : met(h, v, S.today());   // measurable leaves only once today's target is met
   }
   function skippedToday(h) { var t = S.today(); return isGroup(h) ? liveSubs(h.id).length > 0 && liveSubs(h.id).every(function (x) { return S.skipped(x.id, t); }) : S.skipped(h.id, t); }
   function setFold(ids, on) {
@@ -691,16 +754,44 @@
   /* ---- Number entry (measurable): dialog at the TOP, Enter = OK ---- */
   function askNumber(h, k) {
     var v = S.val(h.id, k), dt = new Date(k + 'T12:00:00'), st = h.step || 1;
+    var bk = bookOn(h) && k >= h.book.a, X = bk ? Math.min(h.book.total, h.book.p0 + bookBefore(h, k)) : 0, need = bk ? bookNeed(h, k) : 0, vals = null, lab = null;
+    if (bk) { st = need || h.step || 1; vals = []; for (var p = X; p <= h.book.total; p++) vals.push(p - X); lab = function (x) { return X + x; }; }
+    else if (h.pick) { vals = []; var top = Math.max(st * 40, (h.target || 0) * 3, v || 0); for (var q = 0; q <= top + 1e-9; q += st) vals.push(num(q)); if (v != null && vals.indexOf(v) < 0) { vals.push(v); vals.sort(function (x, y) { return x - y; }); } lab = function (x) { return num(x); }; }
+    var v0 = v == null ? (bk ? Math.min(st, h.book.total - X) : st) : v;
     showSheet('num',
       '<h3 style="color:' + esc(h.color) + '">' + esc(h.name) + '</h3>' +
       '<p class="small muted">' + WD[dt.getDay()] + ' ' + dt.getDate() + ' ' + dt.toLocaleString('en', { month: 'short' }) +
-      ' · target ' + (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + ' ' + esc(h.unit) + '</p>' +
+      ' · target ' + (bk && h.book.end ? (need ? need + ' ' + esc(h.unit || 'pages') + ' (pace to finish by ' + fmtK(h.book.end) + ')' : 'book finished') : (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + ' ' + esc(h.unit)) + '</p>' +
       '<div class="numrow"><button class="btn step" data-act="numStep" data-d="' + (-st) + '" aria-label="Minus ' + num(st) + '">−</button>' +
-      '<input id="numIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + num(v == null ? st : v) + '" placeholder="0">' +
+      '<input id="numIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + num(v0) + '" placeholder="0">' +
       '<button class="btn step" data-act="numStep" data-d="' + st + '" aria-label="Plus ' + num(st) + '">+</button></div>' +
+      (bk ? '<p class="bkp" id="bkp"></p>' : '') +
+      (vals ? '<div class="pk" id="pk">' + vals.map(function (x, i) { return '<button class="pc" data-i="' + i + '">' + lab(x) + '</button>'; }).join('') + '</div>' : '') +
       '<div class="row end"><button class="btn" data-act="numClear">Clear</button>' + (S.d.settings.skipDays ? '<button class="btn" data-act="numSkip">Skip</button>' : '') + '<span class="grow"></span><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="numOk">OK</button></div>', 'attop');
     var inp = document.getElementById('numIn');   // no keyboard until he taps the number
     inp.addEventListener('focus', function () { inp.select(); });
+    App._numSync = null;
+    if (vals) {   // v5.24 sideways number picker: the circle in the middle is the value; typing or ± moves it
+      var pk = document.getElementById('pk'), bkp = document.getElementById('bkp'), quiet = false, tmr = null, onI = -1;
+      var near = function (x) { var bi = 0; vals.forEach(function (y, i) { if (Math.abs(y - x) < Math.abs(vals[bi] - x)) bi = i; }); return bi; };
+      var hi = function (i, scroll) {
+        if (onI >= 0 && pk.children[onI]) pk.children[onI].classList.remove('on'); onI = i; var c = pk.children[i]; if (!c) return; c.classList.add('on');
+        if (scroll) { quiet = true; pk.scrollLeft = c.offsetLeft - (pk.clientWidth - c.offsetWidth) / 2; setTimeout(function () { quiet = false; }, 160); }
+      };
+      var showP = function () { if (!bkp) return; var x = parseFloat((inp.value || '0').replace(',', '.')) || 0; bkp.innerHTML = 'p. ' + X + ' → <b>' + Math.min(h.book.total, X + x) + '</b> of ' + h.book.total; };
+      App._numSync = function () { showP(); hi(near(parseFloat((inp.value || '0').replace(',', '.')) || 0), true); };
+      pk.addEventListener('scroll', function () {
+        if (quiet) return; clearTimeout(tmr);
+        tmr = setTimeout(function () {
+          var mid = pk.scrollLeft + pk.clientWidth / 2, bi = 0, bd = 1e9;
+          Array.prototype.forEach.call(pk.children, function (c, i) { var d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bd) { bd = d; bi = i; } });
+          inp.value = num(vals[bi]); hi(bi, false); showP();
+        }, 90);
+      });
+      pk.addEventListener('click', function (e) { var c = e.target.closest('.pc'); if (!c) return; inp.value = num(vals[+c.dataset.i]); App._numSync(); });
+      inp.addEventListener('input', function () { App._numSync(); });
+      requestAnimationFrame(App._numSync);
+    }
     App._num = function (clear, skip) {
       if (skip) return closeSheet(function () { S.setSkip(h.id, k); App.refreshRow(h.id); });
       var t = inp.value.replace(',', '.').trim(), x = clear || t === '' ? null : parseFloat(t);
@@ -876,7 +967,7 @@
       var st = startOf(x), per = fq(x).t === 'week' || fq(x).t === 'month', bad = x.kind === 'bad', n = 0, ok = 0;
       for (var d = 1; d <= upTo; d++) {
         var dt = new Date(y, m, d, 12), k = S.key(dt); if (dt < st || k > tk) continue;
-        var v = S.val(x.id, k), did = v != null && (x.type === 'yn' ? !!v : (bad ? !met(x, v) : met(x, v))), good = bad ? !did : did;
+        var v = S.val(x.id, k), did = v != null && (x.type === 'yn' ? !!v : (bad ? !met(x, v, k) : met(x, v, k))), good = bad ? !did : did;
         if (S.skipped(x.id, k) || (!per && !scheduled(x, dt))) continue;
         if (k === tk && !good) continue;
         n++; if (good) ok++;
@@ -903,7 +994,7 @@
   function dayRes(h) {   // k -> {v, s (skipped), ok}; bad habits: ok = clean; repeats: a late tick counts on its due day
     var grp = isGroup(h), bad = !grp && h.kind === 'bad';
     var res = grp ? function (k) { var r = groupRes(h, k); return { v: h.agg && h.agg.t === 'sum' ? r.sum : r.done, ok: r.ok, s: r.total === 0 && liveSubs(h.id).length > 0 }; }
-      : function (k) { var v = S.val(h.id, k), sk = S.skipped(h.id, k), did = v != null && (h.type === 'yn' ? !!v : (bad ? !met(h, v) : met(h, v)));
+      : function (k) { var v = S.val(h.id, k), sk = S.skipped(h.id, k), did = v != null && (h.type === 'yn' ? !!v : (bad ? !met(h, v, k) : met(h, v, k)));
           return { v: v, s: sk, ok: bad ? !did : did }; };
     var rr = rep(h);
     if (rr && !bad) { var r0 = res; res = function (k) { var x = r0(k), n = kDn(k); if (rr.late[n] != null) x.ok = false; if (rr.ok[n]) x.ok = true; return x; }; }   // a late tick counts on its due day
@@ -916,12 +1007,12 @@
     var grp = isGroup(h), bad = !grp && h.kind === 'bad', numT = grp ? h.agg && h.agg.t === 'sum' : h.type === 'num';
     var res = dayRes(h), rr = rep(h);
     var sub = grp ? (h.agg && h.agg.t === 'sum' ? 'Group · sum' + (h.target ? ', target ' + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') : '') : 'Group · done when ' + Math.min(h.agg.n || 1, liveSubs(h.id).length) + ' of ' + liveSubs(h.id).length + ' are done')
-      : (bad ? 'Bad habit · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + freqTxt(h);
+      : (bad ? 'Bad habit · ' : '') + (bookOn(h) ? 'Book · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + freqTxt(h);
     var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>' + esc(h.name) + '</h2>' +
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : '') + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
     if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
@@ -1277,6 +1368,7 @@
       freqFields(h, grp) +
       (!grp && h.type === 'num' ? '<label class="fl">Default value<input id="fStep" inputmode="decimal" value="' + (h.step ? num(h.step) : '') + '" placeholder="1" autocomplete="off">' +
         '<span class="small muted">The number box opens with this filled in, so OK saves it in one tap. + and − change by this much.</span></label>' : '') +
+      (!grp && h.type === 'num' && h.kind !== 'bad' ? '<div class="fl">' + bookFields(h) + '</div>' : '') +
       (!grp && h.kind !== 'bad' && (h.link || window.HifzLink && HifzLink.have()) ? '<div class="fl">Fill from Hifz' +
         seg('link', h.link || '', [['', 'Off'], ['pg', 'Qur’an pages'], ['hz', 'Hifz minutes']]) +
         '<span class="small muted">' + (!h.link ? 'Days are filled in from the Hifz app on this phone; your other devices get them through sync.'
@@ -1350,6 +1442,8 @@
     if (g('fMd') != null) { var md = parseInt(g('fMd'), 10); draft.freq.md = md > 0 ? Math.min(md, 31) : 1; }
     if (g('fRa') != null && g('fRa')) draft.freq.a = g('fRa');
     if (g('fKeep') != null) { var kp = parseInt(g('fKeep'), 10); draft.miss = draft.miss || { t: 'stay' }; draft.miss.keep = kp > 0 ? kp : null; }
+    if (g('fBkN') != null && draft.book) { var B = draft.book, pi = function (x) { var n = parseInt(x, 10); return isFinite(n) && n >= 0 ? n : 0; };
+      B.title = g('fBkT').trim(); B.total = pi(g('fBkN')); B.p0 = pi(g('fBkP')); if (g('fBkA')) B.a = g('fBkA'); B.end = g('fBkE') || ''; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
@@ -1776,6 +1870,9 @@
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
       else if (f === 'endAll') h.endAll = !h.endAll;
       else if (f === 'hid') h.hid = !h.hid;
+      else if (f === 'book') { h.book = h.book || { total: 0, p0: 0, a: S.today(), end: '', title: '', showT: false, hist: [] }; h.book.on = !h.book.on; if (h.book.on && !h.unit) h.unit = 'pages'; }
+      else if (f === 'bookT') h.book.showT = !h.book.showT;
+      else if (f === 'pick') h.pick = !h.pick;
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') {
         h.freq.t = v;
@@ -1799,6 +1896,13 @@
       h.name = (h.name || '').trim();
       if (!h.name) { App.toast('Give the habit a name'); var n = document.getElementById('fName'); if (n) n.focus(); return; }
       if (h.type === 'num' && !(h.target >= 0)) return App.toast('Enter a target number');
+      if (h.book && h.book.on && h.type === 'num') {
+        if (!(h.book.total > 0)) return App.toast('Enter the book’s total pages');
+        if (h.book.p0 >= h.book.total) return App.toast('Page you’re on must be less than total pages');
+        if (h.book.end && h.book.end < h.book.a) return App.toast('Finish by must be after the start date');
+      }
+      if (h._bkArch && h.book) { h.book.hist = (h.book.hist || []).concat([h._bkArch]); }
+      delete h._bkArch;
       if (h.freq.t === 'rep' && h.freq.u === 'w' && h.freq.from !== 'done' && !(h.freq.days || []).length) return App.toast('Pick at least one weekday');
       var o = !h._new && S.habit(h.id), sw = o && o.type !== h.type && S.countEntries(h.id);
       if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
@@ -1832,6 +1936,7 @@
     numStep: function (el) {
       var inp = document.getElementById('numIn'), x = parseFloat((inp.value || '0').replace(',', '.')) || 0;
       inp.value = Math.max(0, num(x + (+el.dataset.d)));
+      if (App._numSync) App._numSync();
     },
     numOk: function () { App._num(false); },
     numClear: function () { App._num(true); },
@@ -1917,6 +2022,13 @@
     },
     close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
+    bookEnd: function (el) {   // finished (or switching): open Edit for the next run; the old run goes into the history on Save
+      var h = S.habit(stId); if (!bookOn(h)) return;
+      var b = h.book, i = bookInfo(h), arch = { t: b.title || '', n: b.total, p0: b.p0, a: b.a, f: i.last || S.today(), read: i.read };
+      openEdit(h.id); var nb = draft.book, again = el.dataset.v === 'again';
+      draft._bkArch = arch; nb.p0 = 0; nb.a = addDays(S.today(), 1); nb.end = ''; if (!again) { nb.title = ''; nb.total = 0; }
+      drawEdit(); App.toast(again ? 'Same book from page 1 — set Finish by and Save' : 'Enter the new book and Save');
+    },
     statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
     stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },
     confirmOk: function () { App._confirm(); },
