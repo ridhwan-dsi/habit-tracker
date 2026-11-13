@@ -425,3 +425,8 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .pc { flex:0 0 46px; height:46px; border-radius:50%; border:1px solid var(--line); background:transparent; color:var(--muted); font:inherit; font-size:14px; scroll-snap-align:center; padding:0; }
 .pc.on { flex-basis:54px; height:54px; background:#E3B54F; border-color:#E3B54F; color:#2A1D03; font-weight:600; font-size:16px; }
 .bkbar { height:8px; border-radius:4px; background:var(--card2); overflow:hidden; } .bkbar i { display:block; height:100%; border-radius:4px; }
+
+/* v5.25 subtitle: name keeps its 2-line clamp; subtitle + small lines under it wrap in full */
+.hrow .nm span.hx { display:block; overflow:visible; -webkit-line-clamp:none; min-width:0; }
+.hrow .nm .hn { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-weight:inherit; word-break:break-word; }
+.sbt { display:block; font-size:10.5px; font-style:italic; font-weight:400; color:var(--muted); line-height:1.3; margin-top:1px; white-space:normal; word-break:break-word; }

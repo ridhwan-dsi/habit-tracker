@@ -563,7 +563,7 @@
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span style="color:' + esc(scol || h.color) + '">' + esc(h.name) + dueTag(h) + (bookOn(h) && h.book.showT && h.book.title ? '<small class="wt">' + esc(h.book.title) + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
+          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="wt">' + esc(h.book.title) + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -1353,6 +1353,7 @@
       (!h._new && !h._from ? '<button class="ib" data-act="statOpen" aria-label="Stats">' + ICON.chart + '</button>' : '') + '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
       '<div class="form">' +
       '<label class="fl">Name<input id="fName" value="' + esc(h.name) + '" placeholder="e.g. Qur’an pages" enterkeyhint="done" autocomplete="off"></label>' +
+      '<label class="fl">Subtitle (optional)<input id="fSub" value="' + esc(h.subt || '') + '" placeholder="Shown small under the name" enterkeyhint="done" autocomplete="off"></label>' +
       '<div class="fl">Colour<div class="sw">' + COLORS.map(function (c) {
         return '<button class="dot' + (c === h.color ? ' on' : '') + '" style="background:' + c + '" data-act="ef" data-f="color" data-v="' + c + '" aria-label="Colour ' + c + '"></button>';
       }).join('') + '</div></div>' +
@@ -1435,6 +1436,7 @@
     var g = function (id) { var el = document.getElementById(id); return el && !el.disabled ? el.value : null; };   // greyed (enforced) fields stay the group's
     if (document.getElementById('fPar')) draft.parent = document.getElementById('fPar').value || null;
     if (g('fName') != null) draft.name = g('fName');
+    if (g('fSub') != null) { var st = g('fSub').trim(); if (st) draft.subt = st; else delete draft.subt; }   // v5.25 optional subtitle
     if (g('fUnit') != null) draft.unit = g('fUnit').trim();
     if (g('fTarget') != null) { var t = parseFloat(g('fTarget').replace(',', '.')); draft.target = isFinite(t) ? t : draft.target; }
     if (g('fN') != null) { var n = parseInt(g('fN'), 10); draft.freq.n = n > 0 ? n : 1; }
