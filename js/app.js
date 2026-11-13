@@ -1085,7 +1085,7 @@
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : bookLogBtn(h)) + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, dayT: bookOn(h) && h.book.end ? function (k) { return k >= h.book.a ? bookNeed(h, k) : h.target || 0; } : null, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : bookLogBtn(h)) + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
     if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst' || sheetOpen === 'blog' || sheetOpen === 'bfin') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }

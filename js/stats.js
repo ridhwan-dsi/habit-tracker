@@ -161,15 +161,15 @@
     if (f.t !== 'month' && !(o.bad && !o.num)) {
       var per1 = o.num ? (o.target || 0) : 1, W8 = [], wkS = function (d) { return key(addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7))); }, wm = {};
       days.forEach(function (d) {
-        var k = wkS(d); if (!wm[k]) { wm[k] = { k: k, dt: addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7)), got: 0, sch: 0 }; W8.push(wm[k]); }
+        var k = wkS(d); if (!wm[k]) { wm[k] = { k: k, dt: addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7)), got: 0, sch: 0, dx: 0 }; W8.push(wm[k]); }
         var w = wm[k]; if (d.s) return;
-        if (d.sch && !(d.isT && !d.ok && !o.bad)) w.sch++;
+        if (d.sch && !(d.isT && !d.ok && !o.bad)) { w.sch++; if (o.dayT) w.dx += o.dayT(key(d.dt)); }   // v5.29: a book's due = that day's pace, not the plain target
         if (o.num) { if (typeof d.v === 'number') w.got += d.v; } else if (d.ok && d.sch) w.got++;
       });
       W8 = W8.slice(-8);
       if (W8.length && per1) {
         var bal = 0;
-        W8.forEach(function (w) { w.exp = r1(f.t === 'week' ? Math.min(N, w.sch) * per1 : w.sch * per1); w.got = r1(w.got); w.diff = r1(o.bad ? w.exp - w.got : w.got - w.exp); if (f.t === 'week' && w === W8[W8.length - 1] && w.diff < 0) w.diff = 0; bal = r1(bal + w.diff); w.bal = bal; });
+        W8.forEach(function (w) { w.exp = r1(o.dayT && f.t !== 'week' ? w.dx : f.t === 'week' ? Math.min(N, w.sch) * per1 : w.sch * per1); w.got = r1(w.got); w.diff = r1(o.bad ? w.exp - w.got : w.got - w.exp); if (f.t === 'week' && w === W8[W8.length - 1] && w.diff < 0) w.diff = 0; bal = r1(bal + w.diff); w.bal = bal; });
         var u = o.num ? (o.unit ? ' ' + esc(o.unit) : '') : '';
         var sg = function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v)); };
         wkB = '<section class="stc"><h4>Weekly buckets' + (o.bad ? ' · weekly budget' : '') + '</h4><div class="wbk"><span>Week of</span><span>' + (o.bad ? 'Used' : 'Done') + '</span><span>' + (o.bad ? 'Budget' : 'Due') + '</span><span>Week</span><span>Running</span>' +
