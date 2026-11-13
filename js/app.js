@@ -89,8 +89,8 @@
   function f1(x) { return Math.round(x * 10) / 10; }
   function bookCard(h) {
     var b = h.book, i = bookInfo(h), pct = Math.min(100, Math.round(100 * i.cur / b.total));
-    var T = [['Pages left', i.left, ''], ['Needed now', i.need == null ? '–' : f1(i.need) + '/day', i.need != null && i.orig != null && i.left ? (i.need > i.orig + 0.05 ? 'down' : 'up') : ''],
-      ['Original plan', i.orig == null ? '–' : f1(i.orig) + '/day', ''], ['Your average', f1(i.avg) + '/day', ''],
+    var T = [['Pages left', i.left, ''], ['Needed now', i.need == null ? '–' : Math.ceil(i.need) + '/day', i.need != null && i.orig != null && i.left ? (Math.ceil(i.need) > Math.ceil(i.orig) ? 'down' : 'up') : ''],
+      ['Original plan', i.orig == null ? '–' : Math.ceil(i.orig) + '/day', ''], ['Your average', Math.round(i.avg) + '/day', ''],
       ['Weekly average', Math.round(i.avg * 7) + '/wk', ''], ['Finish at this pace', i.left <= 0 ? 'Done' : i.fin ? fmtK(i.fin) : '–', i.fin && b.end ? (i.fin > b.end ? 'down' : 'up') : '']];
     var o = '<section class="stc bkc"><h4>Book' + (b.title ? ' · ' + esc(b.title) : '') + '</h4>' +
       '<div class="bkbar"><i style="width:' + pct + '%;background:' + esc(h.color) + '"></i></div>' +
@@ -100,7 +100,7 @@
     else o += '<div class="row" style="margin-top:10px"><button class="btn sm" data-act="bookEnd" data-v="new">Switch to a new book</button></div>';
     if ((b.hist || []).length) o += '<h4 style="margin-top:14px">Earlier books</h4>' + b.hist.slice().reverse().map(function (x) {
       var d = Math.max(1, dayDiff(x.a, x.f) + 1);
-      return '<div class="wrow"><span>' + esc(x.t || 'Untitled') + '</span><em>' + fmtK(x.a) + ' – ' + fmtK(x.f) + ' · ' + d + ' days · ' + f1(x.read / d) + '/day</em></div>';
+      return '<div class="wrow"><span>' + esc(x.t || 'Untitled') + '</span><em>' + fmtK(x.a) + ' – ' + fmtK(x.f) + ' · ' + d + ' days · ' + Math.round(x.read / d) + '/day</em></div>';
     }).join('');
     return o + '</section>';
   }
@@ -766,7 +766,7 @@
       '<input id="numIn" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="' + num(v0) + '" placeholder="0">' +
       '<button class="btn step" data-act="numStep" data-d="' + st + '" aria-label="Plus ' + num(st) + '">+</button></div>' +
       (bk ? '<p class="bkp" id="bkp"></p>' : '') +
-      (vals ? '<div class="pk" id="pk">' + vals.map(function (x, i) { return '<button class="pc" data-i="' + i + '">' + lab(x) + '</button>'; }).join('') + '</div>' : '') +
+      (vals ? '<div class="pkw"><div class="pk" id="pk">' + vals.map(function (x, i) { return '<button class="pc" data-i="' + i + '">' + lab(x) + '</button>'; }).join('') + '</div></div>' : '') +
       '<div class="row end"><button class="btn" data-act="numClear">Clear</button>' + (S.d.settings.skipDays ? '<button class="btn" data-act="numSkip">Skip</button>' : '') + '<span class="grow"></span><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="numOk">OK</button></div>', 'attop');
     var inp = document.getElementById('numIn');   // no keyboard until he taps the number
     inp.addEventListener('focus', function () { inp.select(); });
@@ -776,18 +776,19 @@
       var near = function (x) { var bi = 0; vals.forEach(function (y, i) { if (Math.abs(y - x) < Math.abs(vals[bi] - x)) bi = i; }); return bi; };
       var hi = function (i, scroll) {
         if (onI >= 0 && pk.children[onI]) pk.children[onI].classList.remove('on'); onI = i; var c = pk.children[i]; if (!c) return; c.classList.add('on');
-        if (scroll) { quiet = true; pk.scrollLeft = c.offsetLeft - (pk.clientWidth - c.offsetWidth) / 2; setTimeout(function () { quiet = false; }, 160); }
+        if (scroll) { quiet = true; pk.scrollLeft = c.offsetLeft - (pk.clientWidth - c.offsetWidth) / 2; requestAnimationFrame(function () { requestAnimationFrame(function () { quiet = false; }); }); }
       };
       var showP = function () { if (!bkp) return; var x = parseFloat((inp.value || '0').replace(',', '.')) || 0; bkp.innerHTML = 'p. ' + X + ' → <b>' + Math.min(h.book.total, X + x) + '</b> of ' + h.book.total; };
       App._numSync = function () { showP(); hi(near(parseFloat((inp.value || '0').replace(',', '.')) || 0), true); };
+      var raf = 0;   // v5.26: the gold disc is fixed in the middle (CSS); numbers slide under it and the value follows live, no settle delay
       pk.addEventListener('scroll', function () {
-        if (quiet) return; clearTimeout(tmr);
-        tmr = setTimeout(function () {
-          var mid = pk.scrollLeft + pk.clientWidth / 2, bi = 0, bd = 1e9;
+        if (quiet || raf) return;
+        raf = requestAnimationFrame(function () {
+          raf = 0; var mid = pk.scrollLeft + pk.clientWidth / 2, bi = 0, bd = 1e9;
           Array.prototype.forEach.call(pk.children, function (c, i) { var d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bd) { bd = d; bi = i; } });
-          inp.value = num(vals[bi]); hi(bi, false); showP();
-        }, 90);
-      });
+          if (bi !== onI) { inp.value = num(vals[bi]); hi(bi, false); showP(); }
+        });
+      }, { passive: true });
       pk.addEventListener('click', function (e) { var c = e.target.closest('.pc'); if (!c) return; inp.value = num(vals[+c.dataset.i]); App._numSync(); });
       inp.addEventListener('input', function () { App._numSync(); });
       requestAnimationFrame(App._numSync);

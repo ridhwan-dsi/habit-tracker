@@ -419,11 +419,13 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 
 /* v5.24 book + sideways number picker */
 .bkp { text-align:center; color:var(--muted); font-size:13px; margin:8px 0 0; } .bkp b { color:var(--ink); }
-.pk { display:flex; gap:8px; overflow-x:auto; scroll-snap-type:x mandatory; padding:8px 0; margin-top:6px; scrollbar-width:none; align-items:center; }
+.pkw { position:relative; margin-top:6px; }
+.pkw::before { content:''; position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%; background:#E3B54F; pointer-events:none; }
+.pk { position:relative; display:flex; gap:8px; overflow-x:auto; scroll-snap-type:x mandatory; padding:8px 0; scrollbar-width:none; align-items:center; -webkit-overflow-scrolling:touch; }
 .pk::-webkit-scrollbar { display:none; }
-.pk::before, .pk::after { content:''; flex:0 0 calc(50% - 30px); }
+.pk::before, .pk::after { content:''; flex:0 0 calc(50% - 31px); }
 .pc { flex:0 0 46px; height:46px; border-radius:50%; border:1px solid var(--line); background:transparent; color:var(--muted); font:inherit; font-size:14px; scroll-snap-align:center; padding:0; }
-.pc.on { flex-basis:54px; height:54px; background:#E3B54F; border-color:#E3B54F; color:#2A1D03; font-weight:600; font-size:16px; }
+.pc.on { border-color:transparent; color:#2A1D03; font-weight:700; font-size:16px; }
 .bkbar { height:8px; border-radius:4px; background:var(--card2); overflow:hidden; } .bkbar i { display:block; height:100%; border-radius:4px; }
 
 /* v5.25 subtitle: name keeps its 2-line clamp; subtitle + small lines under it wrap in full */
