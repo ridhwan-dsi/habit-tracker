@@ -1981,10 +1981,30 @@
   }
   window.addEventListener('storage', function (e) { if (e.key === 'hifz.v2') fillHifz(true); });
   setInterval(checkDay, 30000);
+  /* ---- One-time import (v5.23): "Fall" lapse days from the old Loop Habits export (2026-11-13). Fills only empty days
+     of the habit named Fall, then marks itself done on this phone. Retries (on open + every 30 s) until the habit
+     is here, e.g. after the first sync pull. Remove once applied on all devices. ---- */
+  var IMP_FALL = ['2026-02-09','2026-02-13','2026-02-14','2026-03-31','2026-04-22','2026-04-23','2026-04-24','2026-04-25','2026-05-04','2026-05-09','2026-06-05','2026-06-08','2026-06-13','2026-07-23','2026-07-25','2026-07-31','2026-08-09','2026-08-11','2026-08-12','2026-09-03','2026-09-19','2026-09-20','2026-10-10'];
+  function importFall() {
+    if (S.demo) return;
+    try { if (localStorage.getItem('habits.imp.fall') === '1') return; } catch (e) { return; }
+    var h = S.habits().filter(function (x) { return !isGroup(x) && x.type === 'yn' && String(x.name || '').trim().toLowerCase() === 'fall'; })[0];
+    if (!h) return;
+    var n = 0, now = Date.now();
+    IMP_FALL.forEach(function (k) {
+      var e = S.d.entries[h.id + '|' + k];
+      if (e && !e.d && (e.v != null || e.s === 1)) return;   // already logged in this app: keep it
+      S.d.entries[h.id + '|' + k] = { v: 1, s: 0, u: now }; n++;
+    });
+    try { localStorage.setItem('habits.imp.fall', '1'); } catch (e) {}
+    if (n) { S.save(); if (!(sheetOpen || sel || drag || lp)) App.render(); App.toast('Imported ' + n + ' old "Fall" days'); }
+  }
+  setInterval(function () { try { importFall(); } catch (e) {} }, 30000);
 
   /* ---- Boot ---- */
   S.load();
   try { fillHifz(false); } catch (e) { console.warn('Hifz link', e); }
+  try { importFall(); } catch (e) { console.warn('Fall import', e); }
   // Reopened within an hour: same view and scroll position. Later than that: back to All, at the top.
   var U = S.d.ui, fresh = U.left && Date.now() - U.left < 3600000;
   if (!fresh) { U.view = 'all'; U.scroll = null; }
