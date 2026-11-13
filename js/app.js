@@ -1444,10 +1444,11 @@
         '<span class="small muted">The number box opens with this filled in, so OK saves it in one tap. + and − change by this much.</span></label>' : '') +
       (!grp && h.type === 'num' && h.kind !== 'bad' ? '<div class="fl">' + bookFields(h) + '</div>' : '') +
       (!grp && h.kind !== 'bad' && (h.link || window.HifzLink && HifzLink.have()) ? '<div class="fl">Fill from Hifz' +
-        seg('link', h.link || '', [['', 'Off'], ['pg', 'Qur’an pages'], ['hz', 'Hifz minutes']]) +
+        (h.type === 'num' ? seg('link', h.link || '', [['', 'Off'], ['pg', 'Qur’an pages'], ['hz', 'Hifz minutes']]) : seg('link', h.link ? 'rule' : '', [['', 'Off'], ['rule', 'On — by rule']])) +
+        (h.type !== 'num' && h.link ? hzRule(h) : '') +
         '<span class="small muted">' + (!h.link ? 'Days are filled in from the Hifz app on this phone; your other devices get them through sync.'
           : h.type === 'num' ? (h.link === 'pg' ? 'Each day shows the pages you read in Hifz (all readings).' : 'Each day shows your Hifz memorisation minutes.')
-          : h.link === 'pg' ? 'Ticks on days you read any Qur’an pages in Hifz.' : 'Ticks on days your Hifz time reaches its daily goal (5 min if no goal is set).') +
+          : 'Ticks on days the rule is met. Page reads = tally counter reads (a page counts once all its sections are read).') +
           ' Hifz never removes a mark you made yourself.</span></div>' : '') +
       (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
         [{ id: '', name: 'Main' }].concat(regTabs()).map(function (t) {
@@ -1498,6 +1499,20 @@
     return '<label class="inl">Each past tick becomes <input id="fTick" inputmode="decimal" value="' + num(h._tick != null ? h._tick : (h.target || 1)) + '"></label>' +
       '<span class="small muted">Ticks that were numbers before go back to those numbers.</span>';
   }
+  /* v5.28 Hifz rule editor for yes/no habits: conditions joined by AND / OR */
+  var HZM = [['min', 'Hifz minutes'], ['pg', 'Qur’an pages read'], ['tl', 'Page reads (tally)']];
+  function hzRule(h) {
+    if (!h.hzr || !h.hzr.c || !h.hzr.c.length) h.hzr = JSON.parse(JSON.stringify(HifzLink.rule(h)));
+    var r = h.hzr, td = HifzLink.day(S.today());
+    return '<div class="hzr">' + (r.c.length > 1 ? seg('hzOp', r.op, [['or', 'Any one (OR)'], ['and', 'All of them (AND)']]) : '') +
+      r.c.map(function (q, i) {
+        return '<div class="hzc">' + (i ? '<em>' + (r.op === 'and' ? 'and' : 'or') + '</em>' : '') + '<select id="hzM' + i + '" class="sel">' + opts(HZM, q.m) + '</select><span>≥</span>' +
+          '<input id="hzN' + i + '" inputmode="numeric" value="' + (q.n || 0) + '" autocomplete="off">' +
+          (r.c.length > 1 ? '<button class="ib" data-act="ef" data-f="hzDel" data-v="' + i + '" aria-label="Remove">×</button>' : '') + '</div>';
+      }).join('') +
+      (r.c.length < 3 ? '<button class="btn sm" data-act="ef" data-f="hzAdd">+ Add condition</button>' : '') +
+      (td ? '<p class="small muted">Today in Hifz: ' + td.min + ' min · ' + td.pg + ' pages read · ' + td.tl + ' page reads → <b>' + (HifzLink.test(r, td) ? 'tick ✓' : 'no tick yet') + '</b></p>' : '') + '</div>';
+  }
   // "In group": put a habit under another (or take it out) without the hold-and-slide gesture
   function grpPick(h) {
     var ts = S.habits().filter(function (x) { return !x.parent && !x.archived && x.id !== h.id; });
@@ -1521,6 +1536,7 @@
       B.title = g('fBkT').trim(); if (g('fBkAu') != null) B.au = g('fBkAu').trim(); B.total = pi(g('fBkN')); B.p0 = pi(g('fBkP')); if (g('fBkA')) B.a = g('fBkA'); B.end = g('fBkE') || ''; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
+    if (draft.hzr && document.getElementById('hzM0')) draft.hzr.c.forEach(function (q, i) { var m = document.getElementById('hzM' + i), n = document.getElementById('hzN' + i); if (m) q.m = m.value; if (n) { var x = parseInt(n.value, 10); q.n = isFinite(x) && x >= 0 ? x : 0; } });
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
     if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
   }
@@ -1958,7 +1974,10 @@
       else if (f === 'miss') { h.miss = h.miss || { keep: null }; h.miss.t = v; }
       else if (f === 'enf') h.enf = !h.enf;
       else if (f === 'tab') h.tab = v || null;
-      else if (f === 'link') h.link = v || null;
+      else if (f === 'link') { h.link = v || null; if (!v) delete h.hzr; }
+      else if (f === 'hzOp') h.hzr.op = v;
+      else if (f === 'hzAdd') h.hzr.c.push({ m: h.hzr.c.some(function (q) { return q.m === 'tl'; }) ? 'pg' : 'tl', n: 1 });
+      else if (f === 'hzDel') h.hzr.c.splice(+v, 1);
       else if (f === 'fold0') h.fold0 = v === '1';
       else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
       else if (f === 'winClear') h.win = { from: '', to: '' };

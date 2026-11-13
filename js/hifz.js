@@ -38,17 +38,39 @@
       Object.keys(D).forEach(function (dv) { ['r', 'n'].forEach(function (md) { var P = (D[dv] || {})[md] || {}; for (var p in P) s += +P[p] || 0; }); });
       if (s) o(k).min += Math.round(s / 60);
     });
+    // v5.28 Tally page reads per day, as Hifz counts them: per page, the least-read section that day (Hifz store.tally)
+    Object.keys(d.pages || {}).forEach(function (k) {
+      var P = d.pages[k]; if (!P || !P.tl || !P.tl.length) return;
+      var pg0 = d.pages[parseInt(k, 10)] || {}, mk = pg0.mk ? pg0.mk[0] : (pg0.masks ? { items: pg0.masks } : null);
+      var ns = mk ? (mk.items || []).filter(function (q) { return q.k === 'div'; }).length + 1 : 1, byD = {};
+      P.tl.forEach(function (e) {
+        var s = byD[e[0]] || (byD[e[0]] = new Array(ns).fill(0)), a = e[1] ? Math.min(e[1], ns) : 1, b = e[2] ? Math.min(e[2], ns) : ns;
+        for (var i = a; i <= b; i++) s[i - 1] += e[3];
+      });
+      Object.keys(byD).forEach(function (day) { var x = o(day); x.tl = (x.tl || 0) + Math.min.apply(null, byD[day]); });
+    });
     cache = { days: out, goal: +((d.settings || {}).goalDay) || 0 };
     return cache;
   }
   window.HifzLink = {
     have: function () { return !!load(); },
     all: function () { return load(); },   // { days: { 'YYYY-MM-DD': { pg, min } }, goal } — used by the dashboard
-    day: function (k) { var c = load(); if (!c) return null; var x = c.days[k] || { pg: 0, min: 0 }; return { pg: x.pg, min: x.min, goal: c.goal }; },
+    day: function (k) { var c = load(); if (!c) return null; var x = c.days[k] || { pg: 0, min: 0 }; return { pg: x.pg, min: x.min, tl: x.tl || 0, goal: c.goal }; },
     /* What a linked habit gets for day k: a number (measurable) or 1 (yes/no ticked); null = nothing from Hifz that day.
        link 'pg' = Qur'an pages read; 'hz' = memorisation minutes. Yes/no 'hz' ticks at Hifz's daily goal (5 min if no goal). */
+    /* v5.28 yes/no rule: { op: 'or' | 'and', c: [{ m: 'min' | 'pg' | 'tl', n }] } — min = Hifz minutes, pg = Qur'an pages read,
+       tl = page reads on the tally counter. Old links become a one-line rule. */
+    rule: function (h) {
+      if (h.hzr && h.hzr.c && h.hzr.c.length) return h.hzr;
+      var c = load(); return { op: 'or', c: [h.link === 'pg' ? { m: 'pg', n: 1 } : { m: 'min', n: (c && c.goal) || 5 }] };
+    },
+    test: function (r, x) {
+      var ok = r.c.map(function (q) { return (x[q.m] || 0) >= (q.n || 0) && (q.n > 0 || x[q.m] > 0); });
+      return r.op === 'and' ? ok.every(Boolean) : ok.some(Boolean);
+    },
     value: function (h, k) {
       var x = this.day(k); if (!x || !h.link) return null;
+      if (h.type !== 'num') { var r = this.rule(h); return this.test(r, x) ? 1 : null; }
       var n = h.link === 'pg' ? x.pg : x.min;
       if (h.type === 'num') return n > 0 ? n : null;
       var need = h.link === 'pg' ? 1 : (x.goal || 5);
