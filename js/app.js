@@ -6,7 +6,7 @@
   var NDAYS = 31, CELL = 48;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function num(v) { return Math.round(v * 100) / 100; }
-  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var COLORS = ['#E5737B', '#F28C6B', '#F2A65A', '#F5D27A', '#5BC48A', '#9EC27A', '#D4D86A', '#F2E25A',
     '#5BC4C0', '#6AD3E0', '#7FB3FF', '#4E9BF0', '#F27BA8', '#C98BE0', '#A99BF0', '#8F9BE0',
     '#C4A49A', '#F0F0F0', '#C9CDD2', '#9AA0A6'];
@@ -87,30 +87,100 @@
     return { cur: cur, left: left, read: rd, el: el, avg: avg, dl: dl, need: need, orig: orig, fin: fin, last: last };
   }
   function f1(x) { return Math.round(x * 10) / 10; }
-  function bookCard(h) {
-    var b = h.book, i = bookInfo(h), pct = Math.min(100, Math.round(100 * i.cur / b.total));
-    var T = [['Pages left', i.left, ''], ['Needed now', i.need == null ? '–' : Math.ceil(i.need) + '/day', i.need != null && i.orig != null && i.left ? (Math.ceil(i.need) > Math.ceil(i.orig) ? 'down' : 'up') : ''],
-      ['Original plan', i.orig == null ? '–' : Math.ceil(i.orig) + '/day', ''], ['Your average', Math.round(i.avg) + '/day', ''],
-      ['Weekly average', Math.round(i.avg * 7) + '/wk', ''], ['Finish at this pace', i.left <= 0 ? 'Done' : i.fin ? fmtK(i.fin) : '–', i.fin && b.end ? (i.fin > b.end ? 'down' : 'up') : '']];
-    var o = '<section class="stc bkc"><h4>Book' + (b.title ? ' · ' + esc(b.title) : '') + '</h4>' +
+  function bkDone(x) { return x.done || x.read >= (x.n || 0) - (x.p0 || 0); }   // v5.27: a run counts as a finished book (old runs: read to the end)
+  function bookCard(h) {   // v5.27: four coloured numbers on top (current page · finish today at · still needed today · daily target), the rest below
+    var b = h.book, i = bookInfo(h), pct = Math.min(100, Math.round(100 * i.cur / b.total)), t = S.today();
+    var tg = t >= b.a ? bookNeed(h, t) : 0, X = Math.min(b.total, b.p0 + bookBefore(h, t)), tv = S.val(h.id, t) || 0, still = Math.max(0, tg - tv);
+    var B = [['c1', 'Current page', i.cur, ''], ['c2', 'Today finish at', Math.min(b.total, X + tg), ''],
+      ['c3' + (still ? '' : ' ok'), 'Still needed today', still ? still : '✓', still ? 'pages' : ''], ['c4', 'Daily target', tg, 'pages']];
+    var T = [['Pages left', i.left, ''], ['Original plan', i.orig == null ? '–' : Math.ceil(i.orig) + '/day', ''], ['Your average', Math.round(i.avg) + '/day', ''],
+      ['Weekly avg', Math.round(i.avg * 7) + '/wk', ''], ['Finish at pace', i.left <= 0 ? 'Done' : i.fin ? fmtK(i.fin) : '–', i.fin && b.end ? (i.fin > b.end ? 'down' : 'up') : ''], ['Days reading', i.el, '']];
+    var o = '<section class="stc bkc"><h4>Book' + (b.title ? ' · ' + esc(b.title) : '') + '</h4>' + (b.au ? '<p class="small muted" style="margin:-6px 0 10px">' + esc(b.au) + '</p>' : '') +
+      '<div class="bkb">' + B.map(function (x) { return '<div class="' + x[0] + '"><span>' + x[1] + '</span><b>' + x[2] + '</b>' + (x[3] ? ' <small>' + x[3] + '</small>' : '') + '</div>'; }).join('') + '</div>' +
       '<div class="bkbar"><i style="width:' + pct + '%;background:' + esc(h.color) + '"></i></div>' +
-      '<p class="small muted" style="margin:6px 0 10px">p. ' + i.cur + ' of ' + b.total + ' · ' + i.read + ' read since ' + fmtK(b.a) + (b.end ? ' · ' + (i.left > 0 ? Math.max(0, dayDiff(S.today(), b.end) + 1) + ' days left' : 'due ' + fmtK(b.end)) : '') + '</p>' +
-      '<div class="tiles">' + T.map(function (x) { return '<div class="tile"><span>' + x[0] + '</span><b' + (x[2] ? ' class="' + x[2] + '"' : '') + '>' + x[1] + '</b></div>'; }).join('') + '</div>';
-    if (i.left <= 0) o += '<p>Finished' + (i.last ? ' on ' + fmtK(i.last) : '') + '.</p><div class="row"><button class="btn" data-act="bookEnd" data-v="again">Read again</button><button class="btn pri" data-act="bookEnd" data-v="new">Start a new book</button></div>';
-    else o += '<div class="row" style="margin-top:10px"><button class="btn sm" data-act="bookEnd" data-v="new">Switch to a new book</button></div>';
-    if ((b.hist || []).length) o += '<h4 style="margin-top:14px">Earlier books</h4>' + b.hist.slice().reverse().map(function (x) {
-      var d = Math.max(1, dayDiff(x.a, x.f) + 1);
-      return '<div class="wrow"><span>' + esc(x.t || 'Untitled') + '</span><em>' + fmtK(x.a) + ' – ' + fmtK(x.f) + ' · ' + d + ' days · ' + Math.round(x.read / d) + '/day</em></div>';
-    }).join('');
+      '<p class="small muted" style="margin:6px 0 10px">p. ' + i.cur + ' of ' + b.total + ' · ' + i.read + ' read since ' + fmtK(b.a) + (b.end ? ' · ' + (i.left > 0 ? Math.max(0, dayDiff(t, b.end) + 1) + ' days left' : 'due ' + fmtK(b.end)) : '') + '</p>' +
+      '<div class="tiles t3">' + T.map(function (x) { return '<div class="tile"><span>' + x[0] + '</span><b' + (x[2] ? ' class="' + x[2] + '"' : '') + '>' + x[1] + '</b></div>'; }).join('') + '</div>' +
+      '<div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="bookFin">Finish book…</button><button class="btn sm" data-act="bookEnd" data-v="new">Switch to a new book</button>' +
+      ((b.hist || []).length ? '<button class="btn sm" data-act="bookLog">Reading log</button>' : '') + '</div>';
     return o + '</section>';
   }
+  function bookLogBtn(h) { return h && h.type === 'num' && h.book && !h.book.on && (h.book.hist || []).length ? '<section class="stc"><h4>Books</h4><button class="btn sm" data-act="bookLog">Reading log</button> <button class="btn sm" data-act="bookRestart">Start a new book</button></section>' : ''; }
+  /* v5.27 Finish book: title, author, finished on, the run's numbers; then new book / read again / stop */
+  function openBookFin() {
+    var h = S.habit(stId); if (!bookOn(h)) return;
+    var b = h.book, i = bookInfo(h), f = i.last || S.today(), d = Math.max(1, dayDiff(b.a, f) + 1);
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth">Finish book</h2></div><div class="stats">' +
+      '<label class="fl">Title<input id="bfT" value="' + esc(b.title || '') + '" autocomplete="off"></label>' +
+      '<label class="fl">Author (optional)<input id="bfA" value="' + esc(b.au || '') + '" autocomplete="off"></label>' +
+      '<label class="fl">Finished on<input id="bfF" type="date" value="' + f + '"></label>' +
+      '<div class="tiles t3"><div class="tile"><span>Total pages</span><b>' + b.total + '</b></div><div class="tile"><span>Days taken</span><b>' + d + '</b></div><div class="tile"><span>Avg / day</span><b>' + Math.round(i.read / d) + '</b></div></div>' +
+      (i.left > 0 ? '<p class="small muted">' + i.left + ' pages not logged — the book is saved as finished anyway.</p>' : '') +
+      '<h4 class="bfh">Save to the log, then</h4><div class="col">' +
+      '<button class="btn pri" data-act="bookFinOk" data-v="new">Start a new book</button><button class="btn" data-act="bookFinOk" data-v="again">Read it again</button><button class="btn" data-act="bookFinOk" data-v="stop">Stop for now</button></div></div>';
+    sheetOpen = 'bfin'; sheet.innerHTML = html; sheet.className = 'sheet page'; sheet.scrollTop = 0;
+  }
+  function bookFinOk(v) {
+    var h = S.habit(stId); if (!bookOn(h)) return;
+    var b = h.book, i = bookInfo(h), g = function (id) { return (document.getElementById(id).value || '').trim(); }, f = g('bfF') || i.last || S.today();
+    if (f < b.a) return App.toast('Finished on must be after ' + fmtK(b.a));
+    b.title = g('bfT'); b.au = g('bfA');
+    b.hist = (b.hist || []).concat([{ t: b.title, au: b.au, n: b.total, p0: b.p0, a: b.a, f: f, read: i.read, done: 1 }]);
+    BKC = {};
+    if (v === 'stop') { b.on = false; S.putHabit(h); App.render(); App.toast('Saved to the reading log'); return openStats(h.id); }
+    S.putHabit(h); openEdit(h.id); var nb = draft.book; nb.p0 = 0; nb.a = addDays(f, 1) > S.today() ? addDays(S.today(), 1) : addDays(f, 1); nb.end = '';
+    if (v !== 'again') { nb.title = ''; nb.au = ''; nb.total = 0; }
+    drawEdit(); App.toast(v === 'again' ? 'Same book from page 1 — set Finish by and Save' : 'Enter the new book and Save');
+  }
+  /* v5.27 Reading log (per habit): books finished, pages, averages for Week / Month / Year / All with comparison, monthly bars, finished list */
+  var blP = 'y';
+  function habitPages(h) { var pre = h.id + '|', E = S.d.entries, L = []; Object.keys(E).forEach(function (x) { if (x.indexOf(pre) !== 0) return; var e = E[x]; if (e && !e.d && e.v != null && !e.s) L.push([x.slice(pre.length), +e.v]); }); return L; }
+  function openBookLog() {
+    var h = S.habit(stId); if (!h || !h.book) return;
+    var P = habitPages(h), H = (h.book.hist || []).filter(bkDone), td = S.todayDate(), t = S.today(), ws = S.d.settings.weekStart || 0;
+    var sum = function (a, e) { var n = 0; P.forEach(function (r) { if (r[0] >= a && r[0] <= e) n += r[1]; }); return n; };
+    var books = function (a, e) { return H.filter(function (x) { return x.f >= a && x.f <= e; }); };
+    var first = P.reduce(function (m, r) { return r[0] < m ? r[0] : m; }, H.reduce(function (m, x) { return x.a < m ? x.a : m; }, t));
+    var a, e = t, pa, pe, cmpL, y = td.getFullYear(), mo = td.getMonth(), pad = function (n) { return String(n).padStart(2, '0'); };
+    var back = function (k, yrs) { return (+k.slice(0, 4) - yrs) + k.slice(4); };
+    if (blP === 'w') { var dw = (td.getDay() - ws + 7) % 7; a = addDays(t, -dw); pa = addDays(a, -7); pe = addDays(t, -7); cmpL = 'last week'; }
+    else if (blP === 'm') { a = y + '-' + pad(mo + 1) + '-01'; pa = back(a, 1); pe = back(t, 1); cmpL = MON[mo] + ' ' + (y - 1); }
+    else if (blP === 'y') { a = y + '-01-01'; pa = back(a, 1); pe = back(t, 1); cmpL = String(y - 1); }
+    else { a = first; pa = null; cmpL = ''; }
+    var nd = dayDiff(a, e) + 1, cur = { b: books(a, e), p: sum(a, e) }, prv = pa ? { b: books(pa, pe), p: sum(pa, pe) } : null;
+    var avgD = function (x) { return x.b.length ? Math.round(x.b.reduce(function (s, z) { return s + dayDiff(z.a, z.f) + 1; }, 0) / x.b.length) : null; };
+    var dlt = function (c, p, pct) { if (!prv) return ''; var d = c - p; if (!d) return '<small class="muted"> = ' + esc(cmpL) + '</small>'; return '<small class="' + (d > 0 ? 'up' : 'down') + '"> ' + (d > 0 ? '▲ ' : '▼ ') + (pct && p ? Math.round(100 * Math.abs(d) / p) + '%' : Math.abs(d)) + ' vs ' + esc(cmpL) + '</small>'; };
+    var lbl = { w: 'this week', m: 'this month', y: 'this year', a: 'all time' }[blP];
+    var B = [['c4', 'Books ' + lbl, cur.b.length, dlt(cur.b.length, prv ? prv.b.length : 0)], ['c1', 'Pages ' + lbl, cur.p.toLocaleString('en'), dlt(cur.p, prv ? prv.p : 0, true)],
+      ['c2', 'Avg pages / day', Math.round(cur.p / nd), prv ? dlt(Math.round(cur.p / nd), Math.round(prv.p / Math.max(1, dayDiff(pa, pe) + 1))) : ''], ['c3', 'Avg days / book', avgD(cur) == null ? '–' : avgD(cur), '']];
+    // chart: Week/Month = pages per day; Year/All = pages per month, this year vs last year
+    var bars = [], cap;
+    if (blP === 'w' || blP === 'm') { var n = blP === 'w' ? 7 : new Date(y, mo + 1, 0).getDate(); for (var q = 0; q < n; q++) { var k = addDays(a, q); bars.push([k <= t ? sum(k, k) : 0, null, blP === 'w' ? WD[new Date(k + 'T12:00:00').getDay()].slice(0, 2) : q % 5 ? '' : k.slice(8) * 1]); } cap = 'Pages per day ' + lbl; }
+    else { for (var m = 0; m < 12; m++) { var ma = y + '-' + pad(m + 1) + '-01', me = y + '-' + pad(m + 1) + '-31'; bars.push([sum(ma, me), sum(back(ma, 1), back(me, 1)), MON[m][0]]); } cap = 'Pages per month · ' + y + ' vs ' + (y - 1); }
+    var mx = Math.max.apply(null, bars.map(function (x) { return Math.max(x[0], x[1] || 0); }).concat([1]));
+    var chart = '<div class="blc">' + bars.map(function (x) { return '<div title="' + x[0] + '"><i style="height:' + Math.round(100 * x[0] / mx) + '%"></i>' + (x[1] != null ? '<i class="ly" style="height:' + Math.round(100 * x[1] / mx) + '%"></i>' : '') + '<em>' + x[2] + '</em></div>'; }).join('') + '</div>';
+    var allP = sum('0000', '9999'), allD = Math.max(1, dayDiff(first, t) + 1);
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>Reading log</h2></div><div class="stats">' +
+      '<p class="stsub">' + esc(h.name) + ' · books finished under this habit</p>' +
+      seg2('blP', blP, [['w', 'Week'], ['m', 'Month'], ['y', 'Year'], ['a', 'All']]) +
+      '<div class="bkb">' + B.map(function (x) { return '<div class="' + x[0] + '"><span>' + x[1] + '</span><b>' + x[2] + '</b>' + x[3] + '</div>'; }).join('') + '</div>' +
+      '<section class="stc"><h4>' + cap + '</h4>' + chart + (blP === 'y' || blP === 'a' ? '<p class="small muted">coloured = ' + y + ', grey = ' + (y - 1) + '</p>' : '') + '</section>' +
+      '<section class="stc"><h4>Finished books' + (H.length ? ' · ' + H.length : '') + '</h4>' + (H.length ? H.slice().sort(function (p, q) { return p.f < q.f ? 1 : -1; }).map(function (x) {
+        var d = Math.max(1, dayDiff(x.a, x.f) + 1);
+        return '<div class="blr"><span>' + esc(x.t || 'Untitled') + (x.au ? '<br><small class="muted">' + esc(x.au) + '</small>' : '') + '</span><em>' + x.n + ' p · ' + d + ' d · ' + Math.round(x.read / d) + '/day<br>done ' + fmtK(x.f) + '</em></div>';
+      }).join('') : '<p class="small muted">None yet — use “Finish book…” on the habit’s stats.</p>') + '</section>' +
+      '<section class="stc"><h4>All time</h4><div class="tiles t3"><div class="tile"><span>Books</span><b>' + H.length + '</b></div><div class="tile"><span>Pages</span><b>' + allP.toLocaleString('en') + '</b></div><div class="tile"><span>Avg / day</span><b>' + Math.round(allP / allD) + '</b></div></div></section></div>';
+    var y0 = sheetOpen === 'blog' ? sheet.scrollTop : 0;
+    sheetOpen = 'blog'; sheet.innerHTML = html; sheet.className = 'sheet page'; sheet.scrollTop = y0;
+  }
+  function seg2(act, cur, opts) { return '<div class="seg" style="margin-bottom:12px">' + opts.map(function (o) { return '<button class="' + (cur === o[0] ? 'on' : '') + '" data-act="' + act + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
   function tgRow(f, title, note, on) { return '<button class="mi tg flat" data-act="ef" data-f="' + f + '"><span>' + title + (note ? '<br><span class="small muted">' + note + '</span>' : '') + '</span><span class="box' + (on ? ' on' : '') + '">' + (on ? ICON.check : '') + '</span></button>'; }
   function bookFields(h) {
     var b = h.book || {}, on = !!b.on;
     var o = tgRow('book', 'Book', 'Reading a book: pages left and the pace needed to finish by a date. The daily target follows that pace.', on);
     if (!on) return o + tgRow('pick', 'Number picker', 'The number box gets a row of numbers to swipe (steps of the default value).', h.pick);
     return o + '<label class="fl">Title (optional)<input id="fBkT" value="' + esc(b.title || '') + '" autocomplete="off"></label>' +
-      tgRow('bookT', 'Show the title under the habit name', '', b.showT) +
+      '<label class="fl">Author (optional)<input id="fBkAu" value="' + esc(b.au || '') + '" autocomplete="off"></label>' +
+      tgRow('bookT', 'Show the title under the habit name', 'Small italic subtitle; changes with each new book.', b.showT) +
       '<div class="two"><label class="fl">Total pages<input id="fBkN" inputmode="numeric" value="' + (b.total || '') + '" autocomplete="off"></label>' +
       '<label class="fl">' + (b.total && (b.hist || b.a < S.today()) ? 'Page at start' : 'Page you’re on') + '<input id="fBkP" inputmode="numeric" value="' + (b.p0 || 0) + '" autocomplete="off"></label></div>' +
       '<div class="two"><label class="fl">Start date<input id="fBkA" type="date" value="' + esc(b.a || S.today()) + '"></label>' +
@@ -563,7 +633,7 @@
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="wt">' + esc(h.book.title) + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
+          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="sbt">' + esc(h.book.title) + (h.book.au ? ' — ' + esc(h.book.au) : '') + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -738,7 +808,9 @@
   function closeSheet(then) { if (then) after.push(then); if (!sheetOpen) return flush(); if (!closing) { closing = true; history.back(); } }
   function flush() { var q = after; after = []; q.forEach(function (f) { f(); }); }
   window.addEventListener('popstate', function () {
-    var wasW = !closing && (sheetOpen === 'wlog' || sheetOpen === 'wset');   // phone Back on a weight dialog → back to the Weight screen
+    var wasW = !closing && (sheetOpen === 'wlog' || sheetOpen === 'wset');
+    var wasB = !closing && (sheetOpen === 'blog' || sheetOpen === 'bfin');
+    if (wasB) { closing = false; hideSheet(); flush(); return openStats(stId); }   // phone Back on a weight dialog → back to the Weight screen
     closing = false;
     if (wasW) { hideSheet(); flush(); return openWeight(true); }
     if (sheetOpen) hideSheet(); else if (tp) { tp = null; App.render(); } else if (sel) { sel = null; App.render(); }
@@ -1013,8 +1085,8 @@
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
       Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : '') + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
-    if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : bookLogBtn(h)) + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
+    if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst' || sheetOpen === 'blog' || sheetOpen === 'bfin') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
 
@@ -1446,7 +1518,7 @@
     if (g('fRa') != null && g('fRa')) draft.freq.a = g('fRa');
     if (g('fKeep') != null) { var kp = parseInt(g('fKeep'), 10); draft.miss = draft.miss || { t: 'stay' }; draft.miss.keep = kp > 0 ? kp : null; }
     if (g('fBkN') != null && draft.book) { var B = draft.book, pi = function (x) { var n = parseInt(x, 10); return isFinite(n) && n >= 0 ? n : 0; };
-      B.title = g('fBkT').trim(); B.total = pi(g('fBkN')); B.p0 = pi(g('fBkP')); if (g('fBkA')) B.a = g('fBkA'); B.end = g('fBkE') || ''; }
+      B.title = g('fBkT').trim(); if (g('fBkAu') != null) B.au = g('fBkAu').trim(); B.total = pi(g('fBkN')); B.p0 = pi(g('fBkP')); if (g('fBkA')) B.a = g('fBkA'); B.end = g('fBkE') || ''; }
     if (g('fStep') != null) { var st = parseFloat(g('fStep').replace(',', '.')); draft.step = isFinite(st) && st > 0 ? st : null; }
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
@@ -1873,7 +1945,7 @@
       else if (f === 'tt') { h.tt = v; h._ttSet = true; }
       else if (f === 'endAll') h.endAll = !h.endAll;
       else if (f === 'hid') h.hid = !h.hid;
-      else if (f === 'book') { h.book = h.book || { total: 0, p0: 0, a: S.today(), end: '', title: '', showT: false, hist: [] }; h.book.on = !h.book.on; if (h.book.on && !h.unit) h.unit = 'pages'; }
+      else if (f === 'book') { h.book = h.book || { total: 0, p0: 0, a: S.today(), end: '', title: '', showT: true, hist: [] }; h.book.on = !h.book.on; if (h.book.on && !h.unit) h.unit = 'pages'; }
       else if (f === 'bookT') h.book.showT = !h.book.showT;
       else if (f === 'pick') h.pick = !h.pick;
       else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
@@ -2023,7 +2095,7 @@
       S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
       S.saveSettings(); wBack();
     },
-    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'blog' || sheetOpen === 'bfin') return openStats(stId, true); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
     bookEnd: function (el) {   // finished (or switching): open Edit for the next run; the old run goes into the history on Save
       var h = S.habit(stId); if (!bookOn(h)) return;
@@ -2032,6 +2104,11 @@
       draft._bkArch = arch; nb.p0 = 0; nb.a = addDays(S.today(), 1); nb.end = ''; if (!again) { nb.title = ''; nb.total = 0; }
       drawEdit(); App.toast(again ? 'Same book from page 1 — set Finish by and Save' : 'Enter the new book and Save');
     },
+    bookFin: function () { openBookFin(); },
+    bookFinOk: function (el) { bookFinOk(el.dataset.v); },
+    bookLog: function () { openBookLog(); },
+    blP: function (el) { blP = el.dataset.v; openBookLog(); },
+    bookRestart: function () { var h = S.habit(stId); if (!h || !h.book) return; openEdit(h.id); var nb = draft.book; nb.on = true; nb.title = ''; nb.au = ''; nb.total = 0; nb.p0 = 0; nb.a = S.today(); nb.end = ''; drawEdit(); App.toast('Enter the new book and Save'); },
     statOpen: function () { readInputs(); var id = draft.id; openStats(id); },
     stMon: function (el) { stMon += +el.dataset.d; if (stMon > 0) stMon = 0; var y = sheet.scrollTop; openStats(stId, true); sheet.scrollTop = y; },
     confirmOk: function () { App._confirm(); },
