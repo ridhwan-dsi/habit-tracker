@@ -536,14 +536,18 @@
     ['gone', 'Put away', 'Missed and gone', 'Let go when their day ended'],
     ['hid', 'Put away', 'Hidden', 'Active habits kept off the list — still counted in Stats'],
     ['arch', 'Put away', 'Archived', 'Retired habits'],
-    ['bad', 'Kind', 'Bad habits', 'Habits you are cutting down']];
-  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true };
+    ['bad', 'Kind', 'Bad habits', 'Habits you are cutting down'],
+    ['times', 'Display', 'Time windows', 'The time shown under a habit’s name'],
+    ['heads', 'Display', 'Group names', 'Off: sub-habits stay in their card, always open, without the group row']];
+  var SHOW_LOOK = { times: 1, heads: 1 };   // v5.30: display switches — not kinds, never hide a habit
+  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true, times: true, heads: true };
   var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
   function SH() {
     var f = S.d.settings;
     if (!f.show) f.show = { done: !f.hideEntered, skip: !f.hideSkipped, rest: f.hideNotDue === false, late: true, past: false, soon: false, gone: false, arch: !f.hideArchived };   // from the old Filter
     if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon', 'bad'];
     if (f.show.bad === undefined) { f.show.bad = true; if (f.showPin.indexOf('bad') < 0) f.showPin.push('bad'); }   // v5.17
+    ['times', 'heads'].forEach(function (k) { if (f.show[k] === undefined) { f.show[k] = true; if (f.showPin.indexOf(k) < 0) f.showPin.push(k); } });   // v5.30
     if (f.show.hid === undefined) { f.show.hid = false; if (f.showPin.indexOf('hid') < 0) f.showPin.push('hid'); }   // v5.18
     return f.show;
   }
@@ -598,7 +602,7 @@
       var k = x[0]; if (k === 'skip' && !f.skipDays) return;
       if (!full && pin.indexOf(k) < 0) return;
       if (full && x[1] !== g) { g = x[1]; h += '<div class="shg">' + g + '</div>'; }
-      var p = pin.indexOf(k) >= 0, ct = '<em class="shc">' + (n[k] || 0) + '</em>';
+      var p = pin.indexOf(k) >= 0, ct = SHOW_LOOK[k] ? '<em class="shc"></em>' : '<em class="shc">' + (n[k] || 0) + '</em>';
       h += shwEdit
         ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '</button>'
         : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
@@ -628,7 +632,7 @@
       // Top-level habits in order; each group card holds its parent row and (unless folded) its sub-habits.
       var shown = {}; list.forEach(function (h) { shown[h.id] = 1; });
       var rowHtml = function (h, cls, grp) {
-        var wt = winOwn(h) && winTxt(h), cx = grp && ctxGrp(h), sl = spT && sprLine(spT, h), scol = sl && spT.sprint.color !== false && sl.cls !== 'n' ? SPC[sl.cls] : null;
+        var wt = SH().times !== false && winOwn(h) && winTxt(h), cx = grp && ctxGrp(h), sl = spT && sprLine(spT, h), scol = sl && spT.sprint.color !== false && sl.cls !== 'n' ? SPC[sl.cls] : null;
         if (cx) { grp = false; cls += ' ctx'; }
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
@@ -639,8 +643,10 @@
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
       };
       var card = function (h) {
-        var grp = isGroup(h), ss = grp && !folded(h.id) ? subs(h.id).filter(function (x) { return shown[x.id]; }) : [];
+        var grp = isGroup(h), noHd = grp && SH().heads === false, ss = grp && (noHd || !folded(h.id)) ? subs(h.id).filter(function (x) { return shown[x.id]; }) : [];
         if (v === 'star') ss.sort(byStar);
+        if (noHd) return ss.length ? '<div class="grp isgrp nohd" data-grp="' + h.id + '">' +   // v5.30 "Group names" off: same card, no group row, always open
+          ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === 0 ? ' rt' : '') + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>' : '';
         return '<div class="grp' + (grp ? ' isgrp' : '') + '" data-grp="' + h.id + '">' +
           rowHtml(h, ' gtop rt' + (ss.length ? '' : ' rb'), grp) +
           ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>';
@@ -879,9 +885,8 @@
     var h = S.habit(cell.dataset.h), k = cell.dataset.k; if (!h) return;
     if (isGroup(h)) return App.toast('A group shows its sub-habits’ result — mark those');
     if (h.type === 'num') return askNumber(h, k);
-    var sk = S.d.settings.skipDays;   // with Skip days on: empty → tick → skip → empty
-    if (S.skipped(h.id, k)) S.setVal(h.id, k, null);
-    else if (S.val(h.id, k)) { if (sk) S.setSkip(h.id, k); else S.setVal(h.id, k, null); }
+    // v5.30: marking only toggles tick <-> empty (a skipped day clears to empty); skip from the select bar or the number box
+    if (S.skipped(h.id, k) || S.val(h.id, k)) S.setVal(h.id, k, null);
     else S.setVal(h.id, k, 1);
     if (navigator.vibrate) navigator.vibrate(15);
     App.refreshRow(h.id);
@@ -1604,7 +1609,7 @@
         (archT ? go('hiddenTabs', 'Archived tabs', S.tabs().filter(function (t) { return t.hidden; }).length, 'Tabs you archived, with their habits. Hold one to bring it back.') : '') +
         go('ptOpen', 'Prayer times', s.pt && s.pt.lat != null ? esc(s.pt.name || 'Set') : 'Not set', 'Lets a time window start or end at a prayer, e.g. “Asr − 15 min”.')) +
       grp('Marking', tg('shortPress', 'Mark with a short tap', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
-        tg('skipDays', 'Skip days', 'A skip is neither done nor missed. Hold a habit name, select several, tap ⏭ to skip today for all. Also: yes/no hold again after a tick; measurable Skip button in the number box.')) +
+        tg('skipDays', 'Skip days', 'A skip is neither done nor missed. Hold a habit name, select several, tap ⏭ to skip today for all. Also the Skip button in a measurable habit’s number box. Holding a day only ticks / clears.')) +
       grp('Day &amp; week', segRow('Day ends late', 'Until this many hours after midnight you are still logging the day before.',
           seg('setNum', 'extendH', [0, 1, 2, 3, 4, 5].map(function (x) { return [x, x ? x + 'h' : 'Off']; }), s.extendH || 0)) +
         segRow('Week starts', '', seg('setNum', 'weekStart', [[6, 'Sat'], [0, 'Sun'], [1, 'Mon']], s.weekStart || 0))) +
