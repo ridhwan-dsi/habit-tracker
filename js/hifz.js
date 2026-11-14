@@ -47,7 +47,8 @@
         var s = byD[e[0]] || (byD[e[0]] = new Array(ns).fill(0)), a = e[1] ? Math.min(e[1], ns) : 1, b = e[2] ? Math.min(e[2], ns) : ns;
         for (var i = a; i <= b; i++) s[i - 1] += e[3];
       });
-      Object.keys(byD).forEach(function (day) { var x = o(day); x.tl = (x.tl || 0) + Math.min.apply(null, byD[day]); });
+      Object.keys(byD).forEach(function (day) { var x = o(day); x.tl = (x.tl || 0) + Math.min.apply(null, byD[day]);
+        x.ts = Math.max(x.ts || 0, Math.max.apply(null, byD[day])); });   // v5.31 ts = reads of the most-read single section that day
     });
     cache = { days: out, goal: +((d.settings || {}).goalDay) || 0 };
     return cache;
@@ -55,11 +56,12 @@
   window.HifzLink = {
     have: function () { return !!load(); },
     all: function () { return load(); },   // { days: { 'YYYY-MM-DD': { pg, min } }, goal } — used by the dashboard
-    day: function (k) { var c = load(); if (!c) return null; var x = c.days[k] || { pg: 0, min: 0 }; return { pg: x.pg, min: x.min, tl: x.tl || 0, goal: c.goal }; },
+    day: function (k) { var c = load(); if (!c) return null; var x = c.days[k] || { pg: 0, min: 0 }; return { pg: x.pg, min: x.min, tl: x.tl || 0, ts: x.ts || 0, goal: c.goal }; },
     /* What a linked habit gets for day k: a number (measurable) or 1 (yes/no ticked); null = nothing from Hifz that day.
        link 'pg' = Qur'an pages read; 'hz' = memorisation minutes. Yes/no 'hz' ticks at Hifz's daily goal (5 min if no goal). */
-    /* v5.28 yes/no rule: { op: 'or' | 'and', c: [{ m: 'min' | 'pg' | 'tl', n }] } — min = Hifz minutes, pg = Qur'an pages read,
-       tl = page reads on the tally counter. Old links become a one-line rule. */
+    /* v5.28 yes/no rule: { op: 'or' | 'and', c: [{ m: 'min' | 'pg' | 'tl' | 'ts', n }] } — min = Hifz minutes, pg = Qur'an pages read,
+       tl = whole-page reads on the tally counter (every section of a page read);
+       ts = reads of any ONE section (v5.31: done when a single section reaches the count). Old links become a one-line rule. */
     rule: function (h) {
       if (h.hzr && h.hzr.c && h.hzr.c.length) return h.hzr;
       var c = load(); return { op: 'or', c: [h.link === 'pg' ? { m: 'pg', n: 1 } : { m: 'min', n: (c && c.goal) || 5 }] };

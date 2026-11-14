@@ -82,7 +82,7 @@
     habit: function (id) { var h = this.d.habits[id]; return h && !h.d ? h : null; },
     newHabit: function () {
       return { name: '', color: '#7FB3FF', type: 'yn', kind: 'good', unit: '', target: 1, tt: 'min',
-        freq: { t: 'day', n: 1, days: [] }, parent: null, isGroup: false, agg: { t: 'count', n: 1 },
+        freq: { t: 'day', n: 1, days: [] }, parent: null, isGroup: false, agg: { t: 'count', n: 0 },
         tab: null, star: false, win: { from: '', to: '' }, step: null, miss: { t: 'drop', keep: null }, archived: false };
     },
     putHabit: function (h) {

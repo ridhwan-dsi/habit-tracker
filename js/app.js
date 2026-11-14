@@ -278,19 +278,23 @@
   function subs(id) { return S.habits().filter(function (x) { return x.parent === id; }); }
   function liveSubs(id) { return subs(id).filter(function (x) { return !x.archived; }); }
   function isGroup(h) { return !h.parent && subs(h.id).length > 0; }
+  /* v5.31: agg.n 0 (or missing) = ALL live sub-habits. A habit that becomes a group starts at 'all' — before, every habit
+     carried the new-habit default n:1, so a new group ticked (and hid as done) as soon as ONE sub-habit was done. */
+  function aggOf(h) { return h.agg || { t: 'count', n: 0 }; }
+  function becomeGroup(g) { if (g && !g.parent && !subs(g.id).length) { g.agg = { t: 'count', n: 0, prog: !g.agg || g.agg.prog !== false }; S.putHabit(g); } }
   function subDone(x, k) { var v = S.val(x.id, k); return v != null && (x.type === 'yn' ? !!v : met(x, v, k)); }
   function groupRes(h, k) {
     var ss = liveSubs(h.id).filter(function (x) { return !S.skipped(x.id, k); }), sum = 0, done = 0;   // a skipped sub-habit doesn't count
     ss.forEach(function (x) { var v = S.val(x.id, k); if (v != null) sum += x.type === 'yn' ? (v ? 1 : 0) : v; if (subDone(x, k)) done++; });
-    var need = h.agg && h.agg.t === 'count' ? Math.min(h.agg.n || ss.length, ss.length) : 0;
-    var ok = h.agg && h.agg.t === 'count' ? (ss.length > 0 && done >= need) : (h.target > 0 ? sum >= h.target : false);
+    var a = aggOf(h), need = a.t === 'count' ? Math.min(a.n || ss.length, ss.length) : 0;
+    var ok = a.t === 'count' ? (ss.length > 0 && done >= need) : (h.target > 0 ? sum >= h.target : false);
     return { sum: num(sum), done: done, total: ss.length, need: need, ok: ok };
   }
   function groupCell(h, d) {
     var r = groupRes(h, d.k), cls = 'c grp-c' + (d.k === S.today() ? ' tdy' : ''), inner;
-    if (h.agg && h.agg.t === 'count') {
+    if (aggOf(h).t === 'count') {
       if (r.ok) { cls += ' ok'; inner = ICON.tick; }
-      else if (r.done && h.agg.prog !== false) { cls += ' part'; inner = '<b>' + r.done + '</b><i>of ' + r.need + '</i>'; }
+      else if (r.done && aggOf(h).prog !== false) { cls += ' part'; inner = '<b>' + r.done + '</b><i>of ' + r.need + '</i>'; }
       else inner = ICON.cross;
     } else {
       if (r.sum) cls += r.ok ? ' ok' : ' part';
@@ -360,6 +364,12 @@
   function toggleView(x) {   // Starred / Archived / Later / Overdue: tap again = back to the tab you came from
     var v = view(); if (v === x) return setView(S.d.ui.prev && tabOrder().indexOf(S.d.ui.prev) >= 0 ? S.d.ui.prev : 'all');
     if (tabOrder().indexOf(v) >= 0) S.d.ui.prev = v; setView(x);
+  }
+  // v5.31: a bottom-bar view button pressed while a page (habit stats, Stats, Weight…) covers the list closes the page and
+  // goes to that view — it used to change the list hidden behind the page, so nothing seemed to happen.
+  function ribGo(x) {
+    if (!sheetOpen || sheetOpen === 'show') return toggleView(x);
+    closeSheet(function () { if (view() !== x) toggleView(x); else App.render(true); });
   }
   function setView(v) { S.d.ui.view = v; S.saveUi(); var sc = document.getElementById('sc'); if (sc) sc.scrollTop = 0; App.render(true); }
   function topOf(h) { return h.parent && S.habit(h.parent) || h; }
@@ -979,7 +989,7 @@
       if (!above || !above.classList.contains('grp')) return App.toast('No habit above to go under');
       var g = S.habit(above.dataset.grp); if (g.parent) return;
       S.reorder(moveAfter(ids(), h.id, lastOf(above)));
-      h.parent = g.id; S.putHabit(h);
+      becomeGroup(g); h.parent = g.id; S.putHabit(h);
       if (folded(g.id)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[g.id] = false; S.saveUi(); }
       App.toast('Moved into ' + g.name);
     } else if (dx < -SHIFT && h.parent) {
@@ -1084,7 +1094,7 @@
     if (stId !== id || !keepMonth) stMon = 0; stId = id;
     var grp = isGroup(h), bad = !grp && h.kind === 'bad', numT = grp ? h.agg && h.agg.t === 'sum' : h.type === 'num';
     var res = dayRes(h), rr = rep(h);
-    var sub = grp ? (h.agg && h.agg.t === 'sum' ? 'Group · sum' + (h.target ? ', target ' + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') : '') : 'Group · done when ' + Math.min(h.agg.n || 1, liveSubs(h.id).length) + ' of ' + liveSubs(h.id).length + ' are done')
+    var sub = grp ? (h.agg && h.agg.t === 'sum' ? 'Group · sum' + (h.target ? ', target ' + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') : '') : (aggOf(h).n ? 'Group · done when ' + Math.min(aggOf(h).n, liveSubs(h.id).length) + ' of ' + liveSubs(h.id).length + ' are done' : 'Group · done when all ' + liveSubs(h.id).length + ' are done'))
       : (bad ? 'Bad habit · ' : '') + (bookOn(h) ? 'Book · ' : '') + (h.type === 'num' ? (h.tt === 'max' ? 'at most ' : 'at least ') + num(h.target) + (h.unit ? ' ' + esc(h.unit) : '') + ' · ' : '') + freqTxt(h);
     var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>' + esc(h.name) + '</h2>' +
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
@@ -1414,15 +1424,15 @@
     var h = draft, f = h.freq, ws = S.d.settings.weekStart || 0;
     var wdOrder = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return (i + ws) % 7; });
     var grp = !h._new && isGroup(S.habit(h.id)), nSub = grp ? liveSubs(h.id).length : 0, inG = h.parent && S.habit(h.parent);
-    var a = h.agg || { t: 'count', n: 1 };
+    var a = aggOf(h);
     var groupFields =
       '<div class="fl">Shown as' + seg('fold0', h.fold0 ? '1' : '0', [['0', 'Expanded'], ['1', 'Collapsed']]) +
       '<span class="small muted">Used when the bottom-bar group button is on “as set in Edit”.</span></div>' +
       '<div class="fl">Group result' + seg('agg', a.t, [['count', 'Tick when done'], ['sum', 'Sum of values']]) +
       '<span class="small muted">' + (a.t === 'count' ? 'The group gets a tick when enough of its sub-habits are done that day.' : 'The group shows the total of its sub-habits (a tick counts as 1).') + '</span></div>' +
-      (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + (a.n || 1) + '"> sub-habits are done</label>' +
-          '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now.' + ((a.n || 1) > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + '</span>' +
-          '<button class="mi tg flat" data-act="ef" data-f="prog"><span>Show progress (e.g. “2 of ' + (a.n || 1) + '”)<br><span class="small muted">Off: the group stays ✗ until it’s done.</span></span><span class="box' + (a.prog !== false ? ' on' : '') + '">' + (a.prog !== false ? ICON.check : '') + '</span></button>'
+      (a.t === 'count' ? '<label class="inl">Done when <input id="fAggN" inputmode="numeric" value="' + (a.n || '') + '" placeholder="all"> sub-habits are done</label>' +
+          '<span class="small muted">' + nSub + ' sub-habit' + (nSub === 1 ? '' : 's') + ' now. Leave blank for all of them (follows as you add more).' + (a.n > nSub ? ' With fewer sub-habits than this, all of them must be done.' : '') + ' The group hides as done when this is reached.</span>' +
+          '<button class="mi tg flat" data-act="ef" data-f="prog"><span>Show progress (e.g. “2 of ' + (a.n || nSub) + '”)<br><span class="small muted">Off: the group stays ✗ until it’s done.</span></span><span class="box' + (a.prog !== false ? ' on' : '') + '">' + (a.prog !== false ? ICON.check : '') + '</span></button>'
         : '<div class="two"><label class="fl">Unit<input id="fUnit" value="' + esc(h.unit) + '" placeholder="pages, min" autocomplete="off"></label>' +
           '<label class="fl">Target (at least)<input id="fTarget" inputmode="decimal" value="' + num(h.target) + '" autocomplete="off"></label></div>') +
       '<button class="mi tg flat" data-act="ef" data-f="endAll"><span>Hide the group when every sub-habit is done or its time is up<br><span class="small muted">For sub-habits with different hide times (e.g. each prayer). Follows the eye drawer: turn on “Done for today” or “Time’s up” there to see them again.</span></span><span class="box' + (h.endAll ? ' on' : '') + '">' + (h.endAll ? ICON.check : '') + '</span></button>';
@@ -1453,7 +1463,7 @@
         (h.type !== 'num' && h.link ? hzRule(h) : '') +
         '<span class="small muted">' + (!h.link ? 'Days are filled in from the Hifz app on this phone; your other devices get them through sync.'
           : h.type === 'num' ? (h.link === 'pg' ? 'Each day shows the pages you read in Hifz (all readings).' : 'Each day shows your Hifz memorisation minutes.')
-          : 'Ticks on days the rule is met. Page reads = tally counter reads (a page counts once all its sections are read).') +
+          : 'Ticks on days the rule is met. Whole-page reads = a page counts once every one of its sections is read; reads of one section = done as soon as any single section reaches the number.') +
           ' Hifz never removes a mark you made yourself.</span></div>' : '') +
       (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
         [{ id: '', name: 'Main' }].concat(regTabs()).map(function (t) {
@@ -1505,7 +1515,7 @@
       '<span class="small muted">Ticks that were numbers before go back to those numbers.</span>';
   }
   /* v5.28 Hifz rule editor for yes/no habits: conditions joined by AND / OR */
-  var HZM = [['min', 'Hifz minutes'], ['pg', 'Qur’an pages read'], ['tl', 'Page reads (tally)']];
+  var HZM = [['min', 'Hifz minutes'], ['pg', 'Qur’an pages read'], ['tl', 'Tally · whole-page reads'], ['ts', 'Tally · reads of one section']];
   function hzRule(h) {
     if (!h.hzr || !h.hzr.c || !h.hzr.c.length) h.hzr = JSON.parse(JSON.stringify(HifzLink.rule(h)));
     var r = h.hzr, td = HifzLink.day(S.today());
@@ -1516,7 +1526,7 @@
           (r.c.length > 1 ? '<button class="ib" data-act="ef" data-f="hzDel" data-v="' + i + '" aria-label="Remove">×</button>' : '') + '</div>';
       }).join('') +
       (r.c.length < 3 ? '<button class="btn sm" data-act="ef" data-f="hzAdd">+ Add condition</button>' : '') +
-      (td ? '<p class="small muted">Today in Hifz: ' + td.min + ' min · ' + td.pg + ' pages read · ' + td.tl + ' page reads → <b>' + (HifzLink.test(r, td) ? 'tick ✓' : 'no tick yet') + '</b></p>' : '') + '</div>';
+      (td ? '<p class="small muted">Today in Hifz: ' + td.min + ' min · ' + td.pg + ' pages read · ' + td.tl + ' whole-page reads · best section read ' + td.ts + '× → <b>' + (HifzLink.test(r, td) ? 'tick ✓' : 'no tick yet') + '</b></p>' : '') + '</div>';
   }
   // "In group": put a habit under another (or take it out) without the hold-and-slide gesture
   function grpPick(h) {
@@ -1543,7 +1553,7 @@
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (draft.hzr && document.getElementById('hzM0')) draft.hzr.c.forEach(function (q, i) { var m = document.getElementById('hzM' + i), n = document.getElementById('hzN' + i); if (m) q.m = m.value; if (n) { var x = parseInt(n.value, 10); q.n = isFinite(x) && x >= 0 ? x : 0; } });
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
-    if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 1; }
+    if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 0; }
   }
 
   /* ---- SL 29 Demo data: switch between his data and a fresh example ---- */
@@ -1802,6 +1812,7 @@
       setFold(gs, !gs.every(folded)); selEnd();
     },
     foldCycle: function () {
+      if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.foldCycle(); });
       var next = { open: 'shut', shut: 'man', man: 'open' }[foldMode()];
       S.d.ui.foldMode = next; S.d.ui.fx = {}; S.saveUi(); App.render();
       App.toast({ open: 'All groups expanded', shut: 'All groups collapsed', man: 'Each group as set in Edit' }[next]);
@@ -1848,7 +1859,7 @@
       var order = S.habits().map(function (h) { return h.id; }).filter(function (id) { return ids.indexOf(id) < 0; });
       var last = [g.id].concat(subs(g.id).map(function (x) { return x.id; })).pop();
       order.splice.apply(order, [order.indexOf(last) + 1, 0].concat(ids));
-      S.reorder(order);
+      S.reorder(order); becomeGroup(g);
       ids.forEach(function (id) { var h = S.habit(id); h.parent = g.id; S.putHabit(h); });
       if (folded(g.id)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[g.id] = false; S.saveUi(); }
       closeSheet(function () { selEnd(function () { App.toast('Moved ' + ids.length + ' into ' + g.name + (skip ? ' · groups can’t go inside a group' : '')); }); });
@@ -1883,9 +1894,9 @@
       });
     },
     secFold: function (el) { var F = S.d.ui.secFold = S.d.ui.secFold || {}, id = el.getAttribute('data-sec'); if (F[id]) delete F[id]; else F[id] = 1; S.saveUi(); App.render(); },
-    home: function () { var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
-    starToggle: function () { toggleView('star'); },
-    doneToggle: function () { toggleView('done'); },
+    home: function () { if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.home(); }); var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
+    starToggle: function () { ribGo('star'); },
+    doneToggle: function () { ribGo('done'); },
     viewArch: function () { toggleView('arch'); },
     shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
     shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
@@ -1969,7 +1980,7 @@
       else if (f === 'book') { h.book = h.book || { total: 0, p0: 0, a: S.today(), end: '', title: '', showT: true, hist: [] }; h.book.on = !h.book.on; if (h.book.on && !h.unit) h.unit = 'pages'; }
       else if (f === 'bookT') h.book.showT = !h.book.showT;
       else if (f === 'pick') h.pick = !h.pick;
-      else if (f === 'agg') { h.agg = h.agg || { n: 1 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
+      else if (f === 'agg') { h.agg = h.agg || { n: 0 }; h.agg.t = v; if (v === 'sum') h.tt = 'min'; }
       else if (f === 'freq') {
         h.freq.t = v;
         if (v === 'rep') { var td = S.todayDate(), q = h.freq; q.ev = q.ev || 1; q.u = q.u || 'w'; q.from = q.from || 'sch'; q.a = q.a || S.today(); q.md = q.md || td.getDate(); if (!q.days || !q.days.length) q.days = [td.getDay()]; }
@@ -1981,10 +1992,10 @@
       else if (f === 'tab') h.tab = v || null;
       else if (f === 'link') { h.link = v || null; if (!v) delete h.hzr; }
       else if (f === 'hzOp') h.hzr.op = v;
-      else if (f === 'hzAdd') h.hzr.c.push({ m: h.hzr.c.some(function (q) { return q.m === 'tl'; }) ? 'pg' : 'tl', n: 1 });
+      else if (f === 'hzAdd') h.hzr.c.push({ m: h.hzr.c.some(function (q) { return q.m === 'tl' || q.m === 'ts'; }) ? 'pg' : 'tl', n: 1 });
       else if (f === 'hzDel') h.hzr.c.splice(+v, 1);
       else if (f === 'fold0') h.fold0 = v === '1';
-      else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 1 }; h.agg.prog = h.agg.prog === false; }
+      else if (f === 'prog') { h.agg = h.agg || { t: 'count', n: 0 }; h.agg.prog = h.agg.prog === false; }
       else if (f === 'winClear') h.win = { from: '', to: '' };
       else if (f === 'wd') { var i = +v, a = h.freq.days, p = a.indexOf(i); if (p >= 0) a.splice(p, 1); else a.push(i); a.sort(); }
       drawEdit();
@@ -2012,6 +2023,7 @@
         if (sw) S.switchType(h, h.type, tick);
         var op = o ? o.parent || null : null, np = h.parent || null;
         if (o && op !== np) {
+          if (np) becomeGroup(S.habit(np));
           var order = S.habits().map(function (x) { return x.id; }).filter(function (id) { return id !== h.id; }), anchor = np || op, at = order.length;
           if (anchor) { order.forEach(function (id, i) { if (id === anchor || S.habit(id).parent === anchor) at = i + 1; }); }
           order.splice(at, 0, h.id); S.reorder(order);
