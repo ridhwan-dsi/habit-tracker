@@ -199,7 +199,58 @@
   function fq(h) {
     var f = (enfG(h) || h).freq || { t: 'day' };
     if (f.t === 'days') return f.days && f.days.length ? { t: 'rep', ev: 1, u: 'w', days: f.days, from: 'sch', a: '2000-01-01' } : { t: 'day' };
+    if (f.t === 'week') return { t: 'rep', ev: 1, u: 'w', days: [0, 1, 2, 3, 4, 5, 6], from: 'sch', a: '2000-01-01', wn: Math.max(1, f.n || 1), ws: f.ws };   // v5.32: old "N per week" = weekly quota on every day
     return f;
+  }
+  /* ---- v5.32 weekly quota: a weekly repeat with "at least N days" (or, for measurable, a weekly total).
+     Shows on the picked days until the week's goal is reached, then hides till next week. Ticks on any day count.
+     Days mode: a day counts when done (measurable: its target met). Total mode: every amount adds up.
+     A week is missed as soon as the picked days left can't reach N (days mode), or when it ends short. ---- */
+  function qOn(h, f) { f = f || fq(h); return f.t === 'rep' && f.u === 'w' && f.from !== 'done' && h.kind !== 'bad' && !isGroup(h) && (f.wn > 0 || (f.wc === 'tot' && h.type === 'num' && f.wt > 0)); }
+  function qTot(h, f) { return f.wc === 'tot' && h.type === 'num' && f.wt > 0; }
+  function wsOf(f) { return f.ws != null && f.ws !== '' ? +f.ws : (S.d.settings.weekStart || 0); }
+  function wk0(n, ws) { return n - ((fromDn(n).getDay() - ws + 7) % 7); }
+  function qPick(f, n, ws) {
+    var a = kDn(f.a || '2000-01-01'), ds = f.days && f.days.length ? f.days : [fromDn(a).getDay()]; if (n < a) return false;
+    return ds.indexOf(fromDn(n).getDay()) >= 0 && Math.round((wk0(n, ws) - wk0(a, ws)) / 7) % Math.max(1, f.ev || 1) === 0;
+  }
+  function qAmt(h, f, k) {
+    if (S.skipped(h.id, k)) return 0;
+    if (qTot(h, f)) { var v = S.val(h.id, k); return typeof v === 'number' ? v : 0; }
+    return doneOn(h, k) ? 1 : 0;
+  }
+  function qrep(h) {
+    var f = fq(h), ws = wsOf(f), tot = qTot(h, f), T = kDn(S.today()), a = kDn(f.a || '2000-01-01');
+    var nPk = (f.days && f.days.length) || 1, need = tot ? f.wt : f.wn, W = [], r = { occ: {}, ok: {}, late: {}, miss: {}, on: 0, lt: 0, ms: 0, q: 1, tot: tot, need: need };
+    for (var w = wk0(Math.max(a, T - 800), ws); w <= T; w += 7) {
+      var got = 0, metD = null, pk = 0, any = false;
+      for (var n = w; n < w + 7; n++) {
+        var p = qPick(f, n, ws); if (p) { pk++; any = true; }
+        if (n > T) continue;
+        if (p && metD == null) r.occ[n] = 1;
+        got += qAmt(h, f, S.key(fromDn(n))); if (metD == null && got >= need) metD = n;
+      }
+      if (!any && !got) continue;
+      var cur = w + 6 >= T, cap = 0;
+      if (cur && metD == null) for (var m = T; m < w + 7; m++) if ((nPk >= need || tot ? qPick(f, m, ws) : true) && !(m === T && qAmt(h, f, S.key(fromDn(T))))) cap++;
+      var miss = metD == null && (!cur || (!tot && got + cap < need));
+      if (metD != null) r.on++; else if (miss) r.ms++;
+      if (miss && !cur) { for (var z = w + 6; z >= w; z--) if (qPick(f, z, ws)) { r.miss[z] = 1; break; } }
+      W.push({ w: w, got: got, met: metD, miss: miss, cur: cur });
+    }
+    var L = W.length && W[W.length - 1].cur ? W[W.length - 1] : { got: 0, met: null, miss: false };
+    var doneT = qAmt(h, f, S.today()) > 0, pickT = qPick(f, T, ws), metB = L.met != null && L.met < T;
+    r.wk = { got: num(L.got), need: need, met: L.met != null, miss: L.miss };
+    r.open = pickT && !metB && !doneT && !L.miss; r.due = r.open ? 0 : -1;
+    r.show = (pickT && !metB) || doneT; r.lastMiss = false;
+    r.next = null; for (var q = T + 1; q < T + 60 && r.next == null; q++) if (qPick(f, q, ws) && (q >= wk0(T, ws) + 7 || !metB)) r.next = q;
+    r.pick = function (dt) { var x = dn(dt); return qPick(f, x, ws) || qAmt(h, f, S.key(dt)) > 0; };
+    return r;
+  }
+  function qTxt(h) {
+    var r = rep(h), f = fq(h); if (!r || !r.q || f.wp === false) return '';
+    var w = r.wk, u = r.tot ? (h.unit ? ' ' + esc(h.unit) : '') : (w.need === 1 ? ' day' : ' days');
+    return '<small class="sbt qtx' + (w.met ? ' qok' : w.miss ? ' qms' : '') + '">' + num(w.got) + ' of ' + num(w.need) + u + ' this week' + (w.miss ? ' · missed' : '') + '</small>';
   }
   function missOf(h) { return (enfG(h) || h).miss || { t: 'drop' }; }
   function isRep(h) { return fq(h).t === 'rep'; }
@@ -222,6 +273,7 @@
   var _save = S.save; S.save = function () { RC = null; BKC = {}; return _save.apply(S, arguments); };
   function rep(h) {
     if (!isRep(h)) return null; RC = RC || {}; if (RC[h.id]) return RC[h.id];
+    if (qOn(h)) return (RC[h.id] = qrep(h));
     var f = fq(h), m = missOf(h), stay = m.t === 'stay' && h.kind !== 'bad', keep = stay && m.keep > 0 ? m.keep : 0;
     var T = kDn(S.today()), a = kDn(f.a || '2000-01-01'), O = [], next = null;
     var span = function (o) { return stay ? (keep ? o + keep + 1 : Infinity) : o + 1; };
@@ -647,7 +699,7 @@
         return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="sbt">' + esc(h.book.title) + (h.book.au ? ' — ' + esc(h.book.au) : '') + '</small>' : '') + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
+          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="sbt">' + esc(h.book.title) + (h.book.au ? ' — ' + esc(h.book.au) : '') + '</small>' : '') + qTxt(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
@@ -1079,6 +1131,13 @@
       '<p class="small muted" style="margin:8px 0 0">' + (r.open ? (r.due > 0 ? 'Due now — ' + r.due + ' day' + (r.due > 1 ? 's' : '') + ' overdue. ' : 'Due today. ') : r.next != null ? 'Next due ' + dayTxt(r.next) + '. ' : '') +
       'A tick after the due day counts as done late.</p></section>';
   }
+  function qCard(h, r) {
+    var w = r.wk, u = r.tot ? (h.unit ? ' ' + esc(h.unit) : '') : ' days';
+    return '<section class="stc"><h4>Each week</h4><div class="tiles t3">' + [['Goal met', r.on], ['Missed', r.ms], ['This week', num(w.got) + ' / ' + num(w.need)]].map(function (x) {
+        return '<div class="tile"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>'; }).join('') + '</div>' +
+      '<p class="small muted" style="margin:8px 0 0">Goal: ' + (r.tot ? num(r.need) + u + ' a week' : 'at least ' + r.need + u + ' a week') + ', week starting ' + WD[wsOf(fq(h))] + '. ' +
+      (w.met ? 'Done for this week.' : w.miss ? 'This week can’t reach the goal any more.' : r.next != null && !r.open ? 'Next on ' + dayTxt(r.next) + '.' : '') + '</p></section>';
+  }
   function dayRes(h) {   // k -> {v, s (skipped), ok}; bad habits: ok = clean; repeats: a late tick counts on its due day
     var grp = isGroup(h), bad = !grp && h.kind === 'bad';
     var res = grp ? function (k) { var r = groupRes(h, k); return { v: h.agg && h.agg.t === 'sum' ? r.sum : r.done, ok: r.ok, s: r.total === 0 && liveSubs(h.id).length > 0 }; }
@@ -1099,8 +1158,8 @@
     var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2 class="sth"><i style="background:' + esc(h.color) + '"></i>' + esc(h.name) + '</h2>' +
       '<button class="ib" data-act="statEdit" aria-label="Edit">' + ICON.pen + '</button></div>' +
       '<div class="stats"><p class="stsub">' + sub + '</p>' +
-      Stats.build({ h: h, res: res, sched: function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: S.d.settings.weekStart || 0,
-        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, dayT: bookOn(h) && h.book.end ? function (k) { return k >= h.book.a ? bookNeed(h, k) : h.target || 0; } : null, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : bookLogBtn(h)) + (grp ? subRates(h) : '') + (rr && !bad ? repCard(rr) : '') }) + '</div>';
+      Stats.build({ h: rr && rr.q ? { id: h.id, freq: { t: 'week', n: rr.tot ? 1 : rr.need, wt: rr.tot ? rr.need : 0 } } : h, res: res, sched: rr && rr.q ? rr.pick : function (dt) { return scheduled(h, dt); }, start: startOf(h), today: S.todayDate(), ws: rr && rr.q ? wsOf(fq(h)) : S.d.settings.weekStart || 0,
+        bad: bad, num: numT, unit: grp ? h.unit : h.unit, target: numT ? h.target : 0, dayT: bookOn(h) && h.book.end ? function (k) { return k >= h.book.a ? bookNeed(h, k) : h.target || 0; } : null, color: h.color, mon: stMon, extra: (bookOn(h) ? bookCard(h) : bookLogBtn(h)) + (grp ? subRates(h) : '') + (rr && !bad ? (rr.q ? qCard(h, rr) : repCard(rr)) : '') }) + '</div>';
     if (sheetOpen === 'stats' || sheetOpen === 'edit' || sheetOpen === 'sprst' || sheetOpen === 'blog' || sheetOpen === 'bfin') { sheetOpen = 'stats'; sheet.innerHTML = html; sheet.className = 'sheet page'; if (!keepMonth) sheet.scrollTop = 0; }
     else showSheet('stats', html, 'page');
   }
@@ -1377,6 +1436,7 @@
     if (!h) { var v = view(); if (S.tab(v) && !sprOf(v)) draft.tab = v; if (sprOf(v)) draft._spr = v; if (v === 'star') draft.star = true; }
     if (!draft.win) draft.win = { from: '', to: '' };
     if (!draft.miss) draft.miss = { t: 'drop', keep: null };
+    if (draft.freq.t === 'week') draft.freq = { t: 'rep', n: 1, ev: 1, u: 'w', days: [0, 1, 2, 3, 4, 5, 6], from: 'sch', a: S.key(startOf(h)), md: 1, wn: Math.max(1, draft.freq.n || 1) };   // v5.32 old N-per-week
     if (draft.freq.t === 'days') draft.freq = draft.freq.days && draft.freq.days.length ? { t: 'rep', n: 1, ev: 1, u: 'w', days: draft.freq.days, from: 'sch', a: S.key(startOf(h)), md: 1 } : { t: 'day', n: 1, days: [] };
     draft._from = sheetOpen === 'stats' ? 'stats' : null;
     drawEdit();
@@ -1481,10 +1541,10 @@
   /* v5.5 Repeat section (Google Tasks "Repeats": only the fields that matter) + If not done + group Enforce.
      A sub-habit of an enforcing group shows the group's settings greyed out. */
   function freqFields(h, grp) {
-    var G = enfG(h), dis = !!G, f = dis ? fq(h) : h.freq, D = dis ? ' disabled' : '', ws = S.d.settings.weekStart || 0;
+    var G = enfG(h), dis = !!G, f = dis ? fq(h) : h.freq, D = dis ? ' disabled' : '', ws = f.t === 'rep' && f.u === 'w' ? wsOf(f) : S.d.settings.weekStart || 0;
     var wdOrder = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return (i + ws) % 7; });
     var o = '<div class="fl' + (dis ? ' lockf' : '') + '">Repeat' + (dis ? '<span class="small muted">Set by the group ' + esc(G.name) + '</span>' : '') +
-      seg('freq', f.t, [['day', 'Every day'], ['week', 'Per week'], ['month', 'Per month'], ['rep', 'Repeats']], dis);
+      seg('freq', f.t, [['day', 'Every day'], ['month', 'Per month'], ['rep', 'Repeats']], dis);
     if (f.t === 'week' || f.t === 'month') o += '<label class="inl"><input id="fN" inputmode="numeric" value="' + (f.n || 1) + '"' + D + '> times per ' + f.t + '</label>';
     if (f.t === 'rep') {
       var done = f.from === 'done';
@@ -1492,18 +1552,31 @@
         '<div class="fl">Count from' + seg('rfrom', done ? 'done' : 'sch', [['sch', 'The schedule'], ['done', 'Day it’s done']], dis) +
         '<span class="small muted">' + (done ? 'The next one is due this long after you actually do it (e.g. car oil every 90 days).' : 'Fixed dates, whenever you did the last one.') + '</span></div>' +
         (!done && f.u === 'w' ? '<div class="wd">' + wdOrder.map(function (i) {
-          return '<button class="' + ((f.days || []).indexOf(i) >= 0 ? 'on' : '') + '" data-act="ef" data-f="wd" data-v="' + i + '"' + D + '>' + WD[i].slice(0, 2) + '</button>'; }).join('') + '</div>' : '') +
+          return '<button class="' + ((f.days || []).indexOf(i) >= 0 ? 'on' : '') + '" data-act="ef" data-f="wd" data-v="' + i + '"' + D + '>' + WD[i].slice(0, 2) + '</button>'; }).join('') + '</div>' + qFields(h, f, D, dis, grp) : '') +
         (!done && f.u === 'm' ? '<label class="inl">On day <input id="fMd" inputmode="numeric" value="' + (f.md || 1) + '"' + D + '> of the month <span class="small muted">(31 = last day)</span></label>' : '') +
         '<label class="fl">' + (done ? 'First due' : 'Starts') + '<input id="fRa" type="date" value="' + esc(f.a || S.today()) + '"' + D + '></label>';
     }
     o += '</div>';
-    if (f.t === 'rep' && h.kind !== 'bad') {
+    if (f.t === 'rep' && h.kind !== 'bad' && !qOn(h, f)) {   // v5.32: a weekly goal has its own miss rule
       var m = (dis ? G.miss : h.miss) || { t: 'drop' };
       o += '<div class="fl' + (dis ? ' lockf' : '') + '">If not done' + seg('miss', m.t, [['drop', 'Disappear'], ['stay', 'Stay as due']], dis) +
         '<span class="small muted">' + (m.t === 'stay' ? 'Stays on the list with a red “due” count until done or its next turn comes. A later tick counts as done late.' : 'Missed once its day is over (e.g. Friday Surah Al-Kahf).') + '</span>' +
         (m.t === 'stay' ? '<label class="inl">Keep for at most <input id="fKeep" inputmode="numeric" value="' + (m.keep || '') + '" placeholder="–"' + D + '> days <span class="small muted">(blank = until done)</span></label>' : '') + '</div>';
     }
     if (grp) o += '<button class="mi tg flat" data-act="ef" data-f="enf"><span>Enforce on sub-habits<br><span class="small muted">Sub-habits follow this group’s repeat and if-not-done settings (shown greyed in their Edit).</span></span><span class="box' + (h.enf ? ' on' : '') + '">' + (h.enf ? ICON.check : '') + '</span></button>';
+    return o;
+  }
+  /* v5.32 weekly goal fields under the weekday chips */
+  function qFields(h, f, D, dis, grp) {
+    if (grp || h.kind === 'bad') return '';
+    var tot = f.wc === 'tot' && h.type === 'num', on = tot ? f.wt > 0 : f.wn > 0, ws0 = S.d.settings.weekStart || 0;
+    var o = '<label class="fl">Week starts on<select id="fWs" class="sel"' + D + '>' + opts([['', 'App default (' + WD[ws0] + ')']].concat([6, 0, 1, 2, 3, 4, 5].map(function (i) { return [i, WD[i]]; })), f.ws == null ? '' : f.ws) + '</select></label>';
+    if (h.type === 'num') o += '<div class="fl">Weekly goal counts' + seg('wc', tot ? 'tot' : 'days', [['days', 'Days target met'], ['tot', 'Weekly total']], dis) + '</div>';
+    o += tot ? '<label class="inl"><input id="fWt" inputmode="decimal" value="' + (f.wt > 0 ? num(f.wt) : '') + '" placeholder="–"' + D + '> ' + esc(h.unit || 'units') + ' a week</label>' +
+        '<span class="small muted">Every amount counts toward the weekly total, even big days. Shows on the picked days until the total is reached, then hides till next week.</span>'
+      : '<label class="inl">At least <input id="fWn" inputmode="numeric" value="' + (f.wn > 0 ? f.wn : '') + '" placeholder="all"' + D + '> days a week</label>' +
+        '<span class="small muted">' + (f.wn > 0 ? 'Ticks on other days count too' + (h.type === 'num' ? ' (a day counts once its target is met, however much you do)' : '') + '. Once ' + f.wn + ' ' + (f.wn === 1 ? 'is' : 'are') + ' done it hides till next week; the week is missed when the picked days left can’t reach ' + f.wn + '.' : 'Blank = every picked day is due on its own.') + '</span>';
+    if (on) o += '<button class="mi tg flat" data-act="ef" data-f="wp"' + D + '><span>Show “x of ' + (tot ? num(f.wt) : f.wn) + ' this week” under the name</span><span class="box' + (f.wp !== false ? ' on' : '') + '">' + (f.wp !== false ? ICON.check : '') + '</span></button>';
     return o;
   }
   // v6: what switching type does to past days (only for a saved habit with history)
@@ -1546,6 +1619,9 @@
     if (g('fEv') != null) { var ev = parseInt(g('fEv'), 10); draft.freq.ev = ev > 0 ? Math.min(ev, 999) : 1; }
     if (g('fMd') != null) { var md = parseInt(g('fMd'), 10); draft.freq.md = md > 0 ? Math.min(md, 31) : 1; }
     if (g('fRa') != null && g('fRa')) draft.freq.a = g('fRa');
+    if (g('fWn') != null) { var wn = parseInt(g('fWn'), 10); draft.freq.wn = wn > 0 ? Math.min(wn, 7) : 0; }   // v5.32 weekly goal
+    if (g('fWt') != null) { var wt = parseFloat(g('fWt').replace(',', '.')); draft.freq.wt = wt > 0 ? wt : 0; }
+    if (g('fWs') != null) draft.freq.ws = g('fWs') === '' ? null : +g('fWs');
     if (g('fKeep') != null) { var kp = parseInt(g('fKeep'), 10); draft.miss = draft.miss || { t: 'stay' }; draft.miss.keep = kp > 0 ? kp : null; }
     if (g('fBkN') != null && draft.book) { var B = draft.book, pi = function (x) { var n = parseInt(x, 10); return isFinite(n) && n >= 0 ? n : 0; };
       B.title = g('fBkT').trim(); if (g('fBkAu') != null) B.au = g('fBkAu').trim(); B.total = pi(g('fBkN')); B.p0 = pi(g('fBkP')); if (g('fBkA')) B.a = g('fBkA'); B.end = g('fBkE') || ''; }
@@ -1987,6 +2063,8 @@
       }
       else if (f === 'ru') h.freq.u = v;
       else if (f === 'rfrom') h.freq.from = v;
+      else if (f === 'wc') h.freq.wc = v;
+      else if (f === 'wp') h.freq.wp = h.freq.wp === false;
       else if (f === 'miss') { h.miss = h.miss || { keep: null }; h.miss.t = v; }
       else if (f === 'enf') h.enf = !h.enf;
       else if (f === 'tab') h.tab = v || null;

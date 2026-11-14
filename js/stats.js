@@ -36,9 +36,9 @@
       unit = f.t;
       var pk = function (d) { if (f.t === 'month') return d.m; var b = addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7)); return key(b); };
       var P = [], pm = {};
-      days.forEach(function (d) { var p = pk(d); if (!pm[p]) { pm[p] = { c: 0, last: false }; P.push(pm[p]); } if (!d.s && (o.bad ? !d.ok : d.ok) && d.sch) pm[p].c++; });
+      days.forEach(function (d) { var p = pk(d); if (!pm[p]) { pm[p] = { c: 0, v: 0, last: false }; P.push(pm[p]); } if (!d.s && typeof d.v === 'number') pm[p].v += d.v; if (!d.s && (o.bad ? !d.ok : d.ok) && d.sch) pm[p].c++; });
       if (P.length) P[P.length - 1].last = true;
-      P.forEach(function (p) { p.met = o.bad ? p.c <= 0 : p.c >= N; p.cnt = !(p.last && !p.met); });
+      P.forEach(function (p) { p.met = o.bad ? p.c <= 0 : f.wt ? p.v >= f.wt : p.c >= N; p.cnt = !(p.last && !p.met); });
       P.forEach(function (p) { if (!p.cnt) return; if (p.met) { run++; best = Math.max(best, run); } else run = 0; });
       for (var q = P.length - 1; q >= 0; q--) { if (!P[q].cnt) continue; if (P[q].met) cur++; else break; }
     }
@@ -159,7 +159,7 @@
        The current week is judged on the days so far. Month-frequency and bad yes/no habits have no weekly quota. ---- */
     var wkB = '';
     if (f.t !== 'month' && !(o.bad && !o.num)) {
-      var per1 = o.num ? (o.target || 0) : 1, W8 = [], wkS = function (d) { return key(addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7))); }, wm = {};
+      var per1 = f.wt ? 1 : o.num ? (o.target || 0) : 1, W8 = [], wkS = function (d) { return key(addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7))); }, wm = {};
       days.forEach(function (d) {
         var k = wkS(d); if (!wm[k]) { wm[k] = { k: k, dt: addD(d.dt, -((d.dt.getDay() - o.ws + 7) % 7)), got: 0, sch: 0, dx: 0 }; W8.push(wm[k]); }
         var w = wm[k]; if (d.s) return;
@@ -169,7 +169,7 @@
       W8 = W8.slice(-8);
       if (W8.length && per1) {
         var bal = 0;
-        W8.forEach(function (w) { w.exp = r1(o.dayT && f.t !== 'week' ? w.dx : f.t === 'week' ? Math.min(N, w.sch) * per1 : w.sch * per1); w.got = r1(w.got); w.diff = r1(o.bad ? w.exp - w.got : w.got - w.exp); if (f.t === 'week' && w === W8[W8.length - 1] && w.diff < 0) w.diff = 0; bal = r1(bal + w.diff); w.bal = bal; });
+        W8.forEach(function (w) { w.exp = r1(f.wt ? f.wt : o.dayT && f.t !== 'week' ? w.dx : f.t === 'week' ? Math.min(N, w.sch) * per1 : w.sch * per1); w.got = r1(w.got); w.diff = r1(o.bad ? w.exp - w.got : w.got - w.exp); if (f.t === 'week' && w === W8[W8.length - 1] && w.diff < 0) w.diff = 0; bal = r1(bal + w.diff); w.bal = bal; });
         var u = o.num ? (o.unit ? ' ' + esc(o.unit) : '') : '';
         var sg = function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v)); };
         wkB = '<section class="stc"><h4>Weekly buckets' + (o.bad ? ' · weekly budget' : '') + '</h4><div class="wbk"><span>Week of</span><span>' + (o.bad ? 'Used' : 'Done') + '</span><span>' + (o.bad ? 'Budget' : 'Due') + '</span><span>Week</span><span>Running</span>' +

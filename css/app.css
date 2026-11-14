@@ -432,6 +432,7 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .hrow .nm span.hx { display:block; overflow:visible; -webkit-line-clamp:none; min-width:0; }
 .hrow .nm .hn { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-weight:inherit; word-break:break-word; }
 .sbt { display:block; font-size:10.5px; font-style:italic; font-weight:400; color:var(--muted); line-height:1.3; margin-top:1px; white-space:normal; word-break:break-word; }
+.sbt.qtx { font-style:normal; } .sbt.qok { color:var(--pri); } .sbt.qms { color:var(--bad); }
 
 /* v5.27 book card + reading log */
 .bkb { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
