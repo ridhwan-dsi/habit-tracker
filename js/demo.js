@@ -115,6 +115,7 @@
         });
       });
     });
+    S.tabsFix(); S.save();   // v5.34: h.tab becomes a pick in that tab
     return made;
   };
 })();

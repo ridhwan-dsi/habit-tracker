@@ -12,6 +12,7 @@
     '#C4A49A', '#F0F0F0', '#C9CDD2', '#9AA0A6'];
   var ICON = {
     plus: '<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    home: '<svg class="i" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5.5h4V20"/></svg>',
     gear: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     chev: '<svg class="i chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
     more: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>',
@@ -50,7 +51,7 @@
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var SPC = { g: '#5DCA8A', a: '#EFB43F', r: '#EC6A6A' };
-  var VIEW_NAME = { all: 'Main', star: 'Starred', arch: 'Archived', done: 'Done today' };
+  var VIEW_NAME = { all: 'Home', star: 'Starred', arch: 'Archived', done: 'Done today' };
   var SYNC_TXT = { off: 'Not signed in', syncing: 'Syncing…', ok: 'Synced', paused: 'Sync paused', error: 'Sync error' };
 
   /* ---- what a cell shows ---- */
@@ -355,18 +356,17 @@
     return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
   }
   // v5.33: ticks and met numbers take the habit's colour (row sets --hc); later a tab can override it
-  function hc(h) { return h.color || '#5BC48A'; }
+  function hc(h) { var p = pick(h); return p && p.col || h.color || '#5BC48A'; }   // v5.34: a tab / Starred pick can have its own colour
   function anyCell(h, d) { return isGroup(h) ? groupCell(h, d) : cellHtml(h, d); }
   /* Fold modes (bottom bar): 'open' all expanded, 'shut' all collapsed, 'man' each group's own default (h.fold0, set in Edit).
      Tapping a group overrides it until the mode changes (ui.fx). In 'shut', opening one group closes the others. */
   function foldMode() { return S.d.ui.foldMode || 'man'; }
   // Starred view: a group that isn't starred itself only frames its starred sub-habits — always open, italic, can't be edited or selected.
-  function ctxGrp(h) { var v = !!h && view(); return v === 'star' ? !h.parent && !h.star && isGroup(h) : v === 'done' ? !h.parent && isGroup(h) && !doneToday(h) : false; }
+  function ctxGrp(h) { var v = !!h && view(); return v === 'star' || isTabV(v) ? !h.parent && !ownIn(h, v) && isGroup(h) : v === 'done' ? !h.parent && isGroup(h) && !doneToday(h) : false; }
   // v5.19: 'Done today' view — everything finished today, hidden ones included (not archived, not skipped)
   function doneToday(h) { return enteredToday(h) && !skippedToday(h); }
   // v5.19: Starred has its own drag order (settings.starOrd), separate from the real order
-  function starRank(id) { var o = S.d.settings.starOrd || [], i = o.indexOf(id); return i < 0 ? 1e6 + ((S.habit(id) || {}).order || 0) : i; }
-  function byStar(a, b) { return starRank(a.id) - starRank(b.id); }
+  function byStar(a, b) { var v = view(); return vRank(v, a.id) - vRank(v, b.id); }   // v5.34: tabs have their own order too (t.ord)
   function folded(id) {
     if (ctxGrp(S.habit(id))) return false;
     var fx = S.d.ui.fx || {}, m = foldMode(), h = S.habit(id);
@@ -395,7 +395,7 @@
     return m != null ? Prayer.hm(m) : Prayer.NAMES[q[1]] + (o ? (o > 0 ? '+' : '−') + offTxt(Math.abs(o)) : '');   // the list shows today's actual time
   }
   function winOwn(h) {
-    var w = h.win || {}, f = mins(w.from), t = mins(w.to); if (f == null && t == null) return 0;
+    var p = pick(h), w = p && p.win ? p.win : h.win || {}, f = mins(w.from), t = mins(w.to); if (f == null && t == null) return 0;
     var ext = (S.d.settings.extendH || 0) * 60, n = new Date(), m = n.getHours() * 60 + n.getMinutes();
     if (f == null) f = 0; if (t == null) t = 1440 + ext;
     if (t < f) t += 1440;                                  // window crosses midnight, e.g. 21:00 → 01:00
@@ -403,16 +403,19 @@
     return m < f ? -1 : m > t ? 1 : 0;
   }
   function winOf(h) { var g = h.parent && S.habit(h.parent), w = g ? winOwn(g) : 0; return w || winOwn(h); }
-  function winTxt(h) { var w = h.win || {}, f = w.from && edgeTxt(w.from), t = w.to && edgeTxt(w.to); return f && t ? f + '–' + t : f ? 'from ' + f : t ? 'until ' + t : ''; }
+  function winTxt(h) { var p = pick(h), w = p && p.win ? p.win : h.win || {}, f = w.from && edgeTxt(w.from), t = w.to && edgeTxt(w.to); return f && t ? f + '–' + t : f ? 'from ' + f : t ? 'until ' + t : ''; }
 
   /* ---- v4 Views: 'all', 'star', a tab id, 'arch' (archived), 'win' (hidden by time window) ---- */
-  function tabsMode() { var m = S.d.settings.tabsMode; return m === 'top' || m === 'off' ? m : 'bottom'; }   // tab strip at top, above the bottom bar, or one page
+  function tabsMode() { return S.d.settings.tabsMode === 'top' ? 'top' : 'bottom'; }   // v5.34: strip at the top or just above the bottom bar (one-page layout dropped)
+  function tPhase(t) { var k = S.today(); return t.from && k < t.from ? 'pre' : t.to && k > t.to ? 'end' : 'on'; }   // optional tab dates
   function visTabs() { return S.tabs().filter(function (t) { return !t.hidden; }); }
-  function stripTabs() { var sa = S.d.ui.showArchTabs, cv = S.d.ui.view; return S.tabs().filter(function (t) { return (!t.hidden || sa) && (!isSpr(t) || sprPhase(t) !== 'end' || t.id === cv); }); }   // ended sprints leave the strip (Settings → Sprints)   // archived tabs only when "Archived" is flipped on
+  // strip: tabs inside their dates (not yet started / ended ones live in the Home hold list); archived only with "Archived" flipped on
+  function stripTabs() { var sa = S.d.ui.showArchTabs, cv = S.d.ui.view; return S.tabs().filter(function (t) { return ((!t.hidden || sa) && tPhase(t) === 'on') || t.id === cv; }); }
+  function stripOn() { return SH().strip !== false && stripTabs().length > 0; }
   function view() {
     var v = S.d.ui.view || 'all';
     if (VIEW_NAME[v]) return v;
-    var t = S.tab(v); return t && (!t.hidden || S.d.ui.showArchTabs) && tabsMode() !== 'off' ? v : 'all';
+    var t = S.tab(v); return t && (!t.hidden || S.d.ui.showArchTabs) ? v : 'all';
   }
   function tabOrder() { return ['all'].concat(stripTabs().map(function (t) { return t.id; })); }
   function toggleView(x) {   // Starred / Archived / Later / Overdue: tap again = back to the tab you came from
@@ -427,7 +430,28 @@
   }
   function setView(v) { S.d.ui.view = v; S.saveUi(); var sc = document.getElementById('sc'); if (sc) sc.scrollTop = 0; App.render(true); }
   function topOf(h) { return h.parent && S.habit(h.parent) || h; }
-  function tabOf(h) { return S.tab(topOf(h).tab); }
+  /* ---- v5.34 Picks. Home holds every habit; a tab (and Starred) is a filter that picks habits or whole groups from Home.
+     Ticks are the same entries everywhere; type, target, repeat stay on the habit. Each pick can override, for that list only:
+     col (colour), hid (true/false; missing = same as Home), solo (a picked sub-habit on its own row instead of under its group),
+     win {from,to} (own time window). Starred keeps its own way of adding (the star) — its overrides live in settings.starIt. ---- */
+  function isTabV(v) { return !VIEW_NAME[v] && !!S.tab(v); }
+  function pkMap(v) { if (v === 'star') return S.d.settings.starIt || (S.d.settings.starIt = {}); var t = S.tab(v); return t ? (t.items = t.items || {}) : null; }
+  function pick(h, v) { var m = pkMap(v || view()); return m && m[h.id] || null; }
+  function ownIn(h, v) { return v === 'star' ? !!h.star : !!(pkMap(v) || {})[h.id]; }
+  function inTab(t, h) { var it = t.items || {}, g = h.parent && S.habit(h.parent); if (h.archived || (g && g.archived)) return false; return !!(it[h.id] || (h.parent && it[h.parent])); }
+  function soloIn(h, v) {
+    if (!h.parent || !S.habit(h.parent) || !ownIn(h, v) || ownIn(S.habit(h.parent), v)) return false;
+    var p = pick(h, v); if (p && p.solo != null) return !!p.solo;
+    return v === 'star' ? S.d.settings.starGroups === false : true;
+  }
+  function hidOf(h) { var p = pick(h); if (p && p.hid != null) return p.hid; var g = h.parent && S.habit(h.parent), q = g && pick(g); if (q && q.hid != null) return q.hid; return !!(h.hid || (g && g.hid)); }
+  function vRank(v, id) { var o = v === 'star' ? S.d.settings.starOrd || [] : (S.tab(v) || {}).ord || [], i = o.indexOf(id); return i < 0 ? 1e6 + ((S.habit(id) || {}).order || 0) : i; }
+  function pickSet(t, ids, on) {   // add / remove picks (archived habits can't be added)
+    var it = t.items = t.items || {};
+    ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (on) { if (!it[id] && !h.archived) it[id] = {}; } else { delete it[id]; if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
+    S.putTab(t);
+  }
+  function tabN(t) { return Object.keys(t.items || {}).filter(function (id) { var h = S.habit(id); return h && !h.archived; }).length; }
   /* ---- v5.22 Sprint tabs. t.sprint = { from, to ('YYYY-MM-DD'), color (rows coloured by progress), items: { habitId: { m, t, b } } }.
      A sprint owns no habits: it lists habits or whole groups from other tabs (like Starred); ticks are the same entries.
      m = 'day' (target per day) | 'total' (over the sprint) for measurable; 'pct' (% of days) | 'times' for yes/no and count groups.
@@ -435,13 +459,12 @@
   var SPT = null;   // the sprint whose targets judge cells while its tab is being drawn
   function isSpr(t) { return !!(t && t.sprint); }
   function sprOf(v) { var t = S.tab(v); return isSpr(t) ? t : null; }
-  function regTabs() { return S.tabs().filter(function (t) { return !t.sprint; }); }
+
   function sprPhase(t) { var k = S.today(), s = t.sprint; return k < s.from ? 'pre' : k > s.to ? 'end' : 'on'; }
   function sprLen(s) { return Math.max(1, kDn(s.to) - kDn(s.from) + 1); }
   function sprNum(h) { return isGroup(h) ? !!(h.agg && h.agg.t === 'sum') : h.type === 'num'; }
   function sprMode(h, it) { var n = sprNum(h), m = it && it.m; return n ? (m === 'total' ? 'total' : 'day') : (m === 'times' ? 'times' : 'pct'); }
   function sprDefT(h, m, L) { var tg = +h.target || 1; return m === 'day' ? tg : m === 'total' ? tg * L : m === 'pct' ? 80 : Math.ceil(L * 0.8); }
-  function sprIn(t, h) { var it = t.sprint.items || {}; return !!(it[h.id] || (h.parent && it[h.parent])); }
   function sprDays(t) { var s = t.sprint, a = kDn(s.from), e = kDn(s.to), tk = kDn(S.today()); return { a: a, e: e, L: e - a + 1, n: tk < a ? 0 : Math.min(tk, e) - a + 1, left: Math.max(0, e - Math.max(tk, a - 1)) }; }
   function sprRange(h, res, from, to, st) {   // counted days, sum of values, good days; today counts only once entered
     var tk = kDn(S.today()), o = { n: 0, sum: 0, ok: 0 };
@@ -454,7 +477,7 @@
     return o;
   }
   function sprCalc(t, h) {   // per-day rates: r (now), T (target), B (baseline); cls g/a/r/n
-    var s = t.sprint, it = (s.items || {})[h.id]; if (!it) return null;
+    var s = t.sprint, it = (s.items || {})[h.id] || ((t.items || {})[h.id] ? {} : null); if (!it) return null;
     var D = sprDays(t), L = D.L, m = sprMode(h, it), bad = !isGroup(h) && h.kind === 'bad', num = sprNum(h), res = dayRes(h), st = startOf(h);
     var tv = it.t != null && it.t !== '' ? +it.t : sprDefT(h, m, L);
     var rate = function (o) { if (!o.n) return null; var c = bad && !num ? o.n - o.ok : o.ok; return m === 'day' || m === 'total' ? o.sum / o.n : c / o.n; };
@@ -484,60 +507,68 @@
       : c.m === 'pct' ? (c.r == null ? '–' : Math.round(c.r * 100)) + '% / ' + lim + f(c.tv) + '% of days' : f(c.bad && !c.num ? c.cur.n - c.cur.ok : c.cur.ok) + ' / ' + lim + f(c.tv) + ' times';
     return { cls: c.cls, html: '<small class="spl">' + esc(sh) + (v ? ' · <b class="sp' + c.cls + '">' + v + '</b>' : '') + '</small>' };
   }
-  function sprHead(t) {
-    var s = t.sprint, D = sprDays(t), ph = sprPhase(t), dt = function (k) { var p = k.split('-'); return (+p[2]) + ' ' + MON3[+p[1] - 1]; };
-    return dt(s.from) + ' – ' + dt(s.to) + ' · ' + (ph === 'pre' ? 'starts in ' + (D.a - kDn(S.today())) + ' day' + (D.a - kDn(S.today()) > 1 ? 's' : '') : ph === 'end' ? 'ended' : 'day ' + D.n + ' of ' + D.L + ' · ' + D.left + ' left');
+  function sprHead(t) {   // v5.34: any tab with dates (from and/or to)
+    var dt = function (k) { var p = k.split('-'); return (+p[2]) + ' ' + MON3[+p[1] - 1] + (+p[0] !== new Date().getFullYear() ? ' ' + p[0] : ''); }, tk = kDn(S.today()), ph = tPhase(t);
+    if (!t.from && !t.to) return '';
+    if (!t.to) return (ph === 'pre' ? 'starts ' : 'since ') + dt(t.from);
+    if (!t.from) return ph === 'end' ? 'ended ' + dt(t.to) : 'until ' + dt(t.to) + ' · ' + (kDn(t.to) - tk) + ' days left';
+    var a = kDn(t.from), e = kDn(t.to), L = e - a + 1, n = Math.min(tk, e) - a + 1;
+    return dt(t.from) + ' – ' + dt(t.to) + ' · ' + (ph === 'pre' ? 'starts in ' + (a - tk) + ' day' + (a - tk > 1 ? 's' : '') : ph === 'end' ? 'ended' : 'day ' + n + ' of ' + L + ' · ' + (e - tk) + ' left');
   }
-  function sprAdd(t, ids, on) {   // add / remove these habits (or groups) to a sprint
-    var it = t.sprint.items = t.sprint.items || {};
-    ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (on) { if (!it[id]) it[id] = { m: sprMode(h, null), t: null, b: null }; } else delete it[id]; });
-    S.putTab(t);
+  function openAddSpr() {   // v5.34 select bar → Add to tab
+    var ids = Object.keys(sel || {}), tb = S.tabs().filter(function (t) { return tPhase(t) !== 'end'; });
+    showSheet('addspr', '<h3>Add to tab</h3>' + (tb.length ? tb.map(function (t) {
+        var all = ids.every(function (id) { return (t.items || {})[id]; }), hd = sprHead(t);
+        return '<button class="mi trow" data-act="sprTog" data-tab="' + t.id + '"><span class="box' + (all ? ' on' : '') + '">' + (all ? ICON.check : '') + '</span><span>' + esc(t.name) + (t.hidden ? ' <small class="muted">(archived)</small>' : '') + (hd ? '<small class="muted" style="display:block">' + esc(hd) + '</small>' : '') + '</span></button>';
+      }).join('') : '<p class="small muted">No tabs yet.</p>') +
+      '<button class="mi trow add" data-act="sprNew">' + ICON.plus + '<span>New tab with these</span></button><div class="row end"><button class="btn" data-act="close">Done</button></div>');
   }
-  function openAddSpr() {
-    var ids = Object.keys(sel || {}), sp = S.tabs().filter(function (t) { return isSpr(t) && sprPhase(t) !== 'end'; });
-    showSheet('addspr', '<h3>Add to sprint</h3>' + (sp.length ? sp.map(function (t) {
-        var all = ids.every(function (id) { return (t.sprint.items || {})[id]; });
-        return '<button class="mi trow" data-act="sprTog" data-tab="' + t.id + '"><span class="box' + (all ? ' on' : '') + '">' + (all ? ICON.check : '') + '</span><span>' + esc(t.name) + '<small class="muted" style="display:block">' + esc(sprHead(t)) + '</small></span></button>';
-      }).join('') : '<p class="small muted">No running or upcoming sprints yet.</p>') +
-      '<button class="mi trow add" data-act="sprNew">' + ICON.plus + '<span>New sprint</span></button><div class="row end"><button class="btn" data-act="close">Done</button></div>');
-  }
-  function openSprEdit(t, ids, copy) {   // new (t null) or edit: name, short, dates, colour switch, each habit's measure / target / baseline
-    var k = S.today(), e = new Date(S.todayDate()); e.setDate(e.getDate() + 29);
-    var s = t ? t.sprint : { from: k, to: S.key(e), color: copy ? copy.sprint.color !== false : true, items: copy ? copy.sprint.items : {} }, its = JSON.parse(JSON.stringify(s.items || {}));
-    (ids || []).forEach(function (id) { var h = S.habit(id); if (h && !its[id]) its[id] = { m: sprMode(h, null), t: null, b: null }; });
-    var L = sprLen(s), tmp = { sprint: { from: s.from, to: s.to, items: its } };
-    var rows = Object.keys(its).filter(function (id) { return S.habit(id); }).map(function (id) {
-      var h = S.habit(id), it = its[id], m = sprMode(h, it), c = sprCalc(tmp, h), num = sprNum(h);
+  /* v5.34 Tab edit page (new tab, Rename, old sprint edit): name, short name, optional dates, the habits it picks,
+     and an optional Targets switch (the old sprint: a target per habit over the dates, rows coloured by progress). */
+  function openTabEdit(t, ids, copy) {
+    var src = t || copy, k = S.today(), e = new Date(S.todayDate()); e.setDate(e.getDate() + 29);
+    var sp = src && src.sprint, its = JSON.parse(JSON.stringify(sp && sp.items || {}));
+    var pk = Object.keys(src && src.items || {}).filter(function (id) { return S.habit(id); });
+    (ids || []).forEach(function (id) { var h = S.habit(id); if (h && !h.archived && pk.indexOf(id) < 0) pk.push(id); });
+    var from = copy ? '' : t ? t.from || '' : '', to = copy ? '' : t ? t.to || '' : '', tg = !!(t && t.sprint);
+    App._spr = { t: t, its: its, ids: pk, tg: tg };
+    var L = from && to ? Math.max(1, kDn(to) - kDn(from) + 1) : 30, tmp = { sprint: { from: from || k, to: to || S.key(e), items: its } };
+    var rows = pk.map(function (id) {
+      var h = S.habit(id), it = its[id] || {}, m = sprMode(h, it), c = sprCalc(tmp, h), num = sprNum(h);
       var bAuto = c && c.B != null ? (m === 'pct' ? Math.round(c.B * 100) : num_(c.disp(c.B))) : '';
-      return '<div class="spe" data-id="' + id + '"><div class="spen"><b style="color:' + esc(h.color) + '">' + esc(h.name) + '</b>' + (isGroup(h) ? '<small class="muted"> group</small>' : '') +
+      return '<div class="spe" data-id="' + id + '"><div class="spen"><b style="color:' + esc(h.color) + '">' + esc(h.name) + '</b>' + (isGroup(h) ? '<small class="muted"> group</small>' : h.parent && S.habit(h.parent) ? '<small class="muted"> · ' + esc(S.habit(h.parent).name) + '</small>' : '') +
         '<button class="ib sm" data-act="sprRm" data-id="' + id + '" aria-label="Remove">' + ICON.bin + '</button></div><div class="spef">' +
-        '<select id="spm-' + id + '" class="sel">' + opts(num ? [['day', 'Per day'], ['total', 'Sprint total']] : [['pct', '% of days'], ['times', 'Times in sprint']], m) + '</select>' +
+        '<select id="spm-' + id + '" class="sel">' + opts(num ? [['day', 'Per day'], ['total', 'Total']] : [['pct', '% of days'], ['times', 'Times']], m) + '</select>' +
         '<label>' + (h.kind === 'bad' ? 'Limit' : 'Target') + '<input id="spt-' + id + '" inputmode="decimal" value="' + (it.t != null ? it.t : '') + '" placeholder="' + num_(sprDefT(h, m, L)) + '"></label>' +
         '<label>Baseline<input id="spb-' + id + '" inputmode="decimal" value="' + (it.b != null ? it.b : '') + '" placeholder="' + (bAuto === '' ? 'auto' : bAuto + ' auto') + '"></label></div></div>';
     }).join('');
-    showSheet('spredit', '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (t ? 'Edit sprint' : 'New sprint') + '</h2><button class="btn pri sm" data-act="sprSave">Save</button></div><div class="stats">' +
-      '<label class="fl">Name<input id="spName" value="' + esc(t ? t.name : copy ? copy.name + ' 2' : '') + '" placeholder="e.g. Ramadan prep" maxlength="30"></label>' +
-      '<label class="fl">Short name (optional)<input id="spShort" value="' + esc(t && t.short || '') + '" maxlength="10"></label>' +
-      '<div class="spd"><label class="fl">Starts<input type="date" id="spFrom" value="' + s.from + '"></label><label class="fl">Ends<input type="date" id="spTo" value="' + s.to + '"></label></div>' +
-      '<button class="flip srw" data-act="sprCol" aria-pressed="' + (s.color !== false) + '" style="width:100%;justify-content:space-between"><span>Colour by progress</span><i class="tgl' + (s.color !== false ? ' on' : '') + '" id="spCol"></i></button>' +
-      '<p class="small muted">Green = on target, amber = better than baseline, red = at or below baseline, grey = fewer than 3 days so far. Only inside this tab.</p>' +
-      '<h4 class="sph">Habits</h4>' + (rows || '<p class="small muted">None yet. Hold a habit name, select, then tap the flag on the top bar.</p>') +
-      '<p class="small muted">Leave target blank for the suggestion; leave baseline blank to use your average over the same number of days before the start. Inside this tab a “per day” target also decides when the cell turns green.</p>' +
-      (t ? '<div class="row"><button class="btn" data-act="sprAgain">Run again with new dates</button></div>' : '') + '</div>', 'page');
-    App._spr = { t: t, its: its };
+    var col = !(sp && sp.color === false);
+    showSheet('spredit', '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (t ? 'Edit tab' : 'New tab') + '</h2><button class="btn pri sm" data-act="sprSave">Save</button></div><div class="stats' + (tg ? '' : ' tgoff') + '" id="spBox">' +
+      '<label class="fl">Name<input id="spName" value="' + esc(t ? t.name : copy ? copy.name + ' 2' : '') + '" placeholder="e.g. Morning" maxlength="30" autocomplete="off"></label>' +
+      '<label class="fl">Short name (optional)<input id="spShort" value="' + esc(t && t.short || '') + '" maxlength="10" autocomplete="off"><span class="small muted">Shown on the strip only when it runs out of room.</span></label>' +
+      '<div class="spd"><label class="fl">From (optional)<input type="date" id="spFrom" value="' + from + '"></label><label class="fl">To (optional)<input type="date" id="spTo" value="' + to + '"></label></div>' +
+      '<p class="small muted">Any start date works, past ones too. Before the start the tab waits in the Home hold list; after the end it moves to Ended tabs there.</p>' +
+      '<button class="flip srw" data-act="tgTog" aria-pressed="' + tg + '" style="width:100%;justify-content:space-between"><span>Targets</span><i class="tgl' + (tg ? ' on' : '') + '" id="spTg"></i></button>' +
+      '<p class="small muted tgx">A target (or limit) per habit over the tab’s dates, with its own Stats. Needs both dates.</p>' +
+      '<button class="flip srw tgx" data-act="sprCol" aria-pressed="' + col + '" style="width:100%;justify-content:space-between"><span>Colour rows by progress</span><i class="tgl' + (col ? ' on' : '') + '" id="spCol"></i></button>' +
+      '<p class="small muted tgx">Green = on target, amber = better than baseline, red = at or below baseline, grey = fewer than 3 days so far. Only inside this tab.</p>' +
+      '<h4 class="sph">Habits</h4>' + (rows || '<p class="small muted">None yet. Save, then tap + on the tab to pick habits from Home.</p>') +
+      '<p class="small muted tgx">Leave target blank for the suggestion; leave baseline blank to use your average over the same number of days before the start. A “per day” target also decides when the cell turns green, inside this tab only.</p>' +
+      (t && t.sprint && t.to ? '<div class="row"><button class="btn" data-act="sprAgain">Run again with new dates</button></div>' : '') + '</div>', 'page');
   }
+  function openSprEdit(t, ids, copy) { openTabEdit(t, ids, copy); }
   function sprRead() {
     var o = App._spr, f = function (id) { return document.getElementById(id); };
-    Object.keys(o.its).forEach(function (id) {
+    o.ids.forEach(function (id) {
       var m = f('spm-' + id), tv = f('spt-' + id), bv = f('spb-' + id); if (!m) return;
       var n = function (x) { var v = x.value.trim().replace(',', '.'); return v === '' || isNaN(+v) ? null : +v; };
       o.its[id] = { m: m.value, t: n(tv), b: n(bv) };
     });
-    return { name: f('spName').value.trim(), short: f('spShort').value.trim(), from: f('spFrom').value, to: f('spTo').value, color: f('spCol').classList.contains('on') };
+    return { name: f('spName').value.trim(), short: f('spShort').value.trim(), from: f('spFrom').value, to: f('spTo').value, color: f('spCol').classList.contains('on'), tg: f('spTg').classList.contains('on') };
   }
   function openSprStats(t) {   // v5.22 sprint stats: tiles, pace per habit, each day, progress lines vs target and baseline
     RC = null;
-    var s = t.sprint, D = sprDays(t), H = Object.keys(s.items || {}).map(function (id) { return S.habit(id); }).filter(function (h) { return h && !h.archived; });
+    var s = t.sprint, D = sprDays(t), H = Object.keys(t.items || s.items || {}).map(function (id) { return S.habit(id); }).filter(function (h) { return h && !h.archived; });
     var C = H.map(function (h) { return { h: h, c: sprCalc(t, h) }; });
     var ok = C.filter(function (x) { return x.c.cls === 'g'; }).length, rated = C.filter(function (x) { return x.c.r != null; });
     var vt = rated.filter(function (x) { return !x.c.bad; }), avgT = vt.length ? Math.round(vt.reduce(function (a, x) { return a + Math.min(1.5, x.c.r / (x.c.T || 1)); }, 0) / vt.length * 100) : null;
@@ -568,23 +599,23 @@
       return '<div class="spc"><span><i style="background:' + esc(x.h.color) + '"></i>' + esc(x.h.name) + '</span><svg viewBox="0 0 300 62" preserveAspectRatio="none">' + ln(c.T, 'spt') + ln(c.B, 'spbl') +
         '<polyline points="0,60 ' + pts.map(function (p, i) { return X(i).toFixed(1) + ',' + Y(p).toFixed(1); }).join(' ') + '" class="spl2" style="stroke:' + esc(x.h.color) + '"/></svg></div>';
     }).join('') + '<p class="small muted">Coloured line = you · dashed green = target · dotted grey = baseline.</p></section>' : '';
-    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + esc(t.name) + '</h2><button class="ib" data-act="sprEditOpen" data-tab="' + t.id + '" aria-label="Edit sprint">' + ICON.pen + '</button></div>' +
-      '<div class="stats"><p class="stsub">' + esc(sprHead(t)) + '</p>' + (C.length ? tiles + pace + daily + lines : '<p class="muted">No habits in this sprint yet. Hold a habit name, select, then tap the flag.</p>') +
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + esc(t.name) + '</h2><button class="ib" data-act="sprEditOpen" data-tab="' + t.id + '" aria-label="Edit tab">' + ICON.pen + '</button></div>' +
+      '<div class="stats"><p class="stsub">' + esc(sprHead(t)) + '</p>' + (C.length ? tiles + pace + daily + lines : '<p class="muted">No habits in this tab yet. Tap + on the tab to pick some.</p>') +
       (sprPhase(t) === 'end' ? '<div class="row"><button class="btn" data-act="sprAgainId" data-tab="' + t.id + '">Run again with new dates</button></div>' : '') + '</div>';
     App._sprSt = t.id;
     if (sheetOpen === 'stats') { sheetOpen = 'sprst'; sheet.innerHTML = html; sheet.className = 'sheet page'; sheet.scrollTop = 0; }
     else showSheet('sprst', html, 'page');
   }
-  function openSprList() {
-    var sp = S.tabs().filter(isSpr);
-    showSheet('sprlist', '<h3>Sprints</h3>' + (sp.length ? sp.map(function (t) {
-      return '<button class="mi trow" data-act="sprStatsId" data-tab="' + t.id + '"><span>' + esc(t.name) + '<small class="muted" style="display:block">' + esc(sprHead(t)) + '</small></span></button>'; }).join('')
-      : '<p class="small muted">None yet. Hold a tab → New → Sprint.</p>') + '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
+  function openSprList() {   // v5.34 Ended tabs: tap = open the tab; tabs with targets also show their report
+    var sp = S.tabs().filter(function (t) { return tPhase(t) === 'end'; });
+    showSheet('sprlist', '<h3>Ended tabs</h3>' + (sp.length ? sp.map(function (t) {
+      return '<div class="trow2"><button class="mi trow" data-act="goTab" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + '<small class="muted" style="display:block">' + esc(sprHead(t)) + '</small></span></button>' +
+        (isSpr(t) ? '<button class="btn sm" data-act="sprStatsId" data-tab="' + t.id + '">Report</button>' : '') + '</div>'; }).join('')
+      : '<p class="small muted">None.</p>') + '<p class="small muted hint">Hold one to edit its dates, archive or delete it.</p><div class="row end"><button class="btn" data-act="close">Close</button></div>');
   }
   // base: may this habit be on screen at all right now (hidden tab, archive, time window, entered)?
   function base(h, v) {
-    var tb = tabOf(h), g = h.parent && S.habit(h.parent), f = S.d.settings;
-    if (tb && tb.hidden && !(S.d.ui.showArchTabs && v === tb.id)) return false;   // an archived tab's habits show only while you're in it
+    var g = h.parent && S.habit(h.parent);
     if (v === 'arch') return true;
     if (v === 'done') return !(h.archived || (g && g.archived));
     var s = SH(); return cats(h).every(function (c) { return s[c] || (sel && SELOK[c]); });   // v5.14: the eye drawer's switches decide
@@ -602,9 +633,10 @@
     ['arch', 'Put away', 'Archived', 'Retired habits'],
     ['bad', 'Kind', 'Bad habits', 'Habits you are cutting down'],
     ['times', 'Display', 'Time windows', 'The time shown under a habit’s name'],
-    ['heads', 'Display', 'Group names', 'Off: sub-habits stay in their card, always open, without the group row']];
-  var SHOW_LOOK = { times: 1, heads: 1 };   // v5.30: display switches — not kinds, never hide a habit
-  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true, times: true, heads: true };
+    ['heads', 'Display', 'Group names', 'Off: sub-habits stay in their card, always open, without the group row'],
+    ['strip', 'Display', 'Tab strip', 'Your tabs above the list. Off: hold Home on the bottom bar to switch tab']];
+  var SHOW_LOOK = { times: 1, heads: 1, strip: 1 };   // v5.30: display switches — not kinds, never hide a habit
+  var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true, times: true, heads: true, strip: true };
   var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
   function SH() {
     var f = S.d.settings;
@@ -612,13 +644,14 @@
     if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon', 'bad'];
     if (f.show.bad === undefined) { f.show.bad = true; if (f.showPin.indexOf('bad') < 0) f.showPin.push('bad'); }   // v5.17
     ['times', 'heads'].forEach(function (k) { if (f.show[k] === undefined) { f.show[k] = true; if (f.showPin.indexOf(k) < 0) f.showPin.push(k); } });   // v5.30
+    if (f.show.strip === undefined) { f.show.strip = !f._noStrip; delete f._noStrip; if (f.showPin.indexOf('strip') < 0) f.showPin.push('strip'); }   // v5.34
     if (f.show.hid === undefined) { f.show.hid = false; if (f.showPin.indexOf('hid') < 0) f.showPin.push('hid'); }   // v5.18
     return f.show;
   }
   function cats(h) {   // which drawer kinds this habit falls under right now
     var g = h.parent && S.habit(h.parent), c = [], w = winOf(h);
     if (h.archived || (g && g.archived)) c.push('arch');
-    else if (h.hid || (g && g.hid)) c.push('hid');
+    else if (hidOf(h)) c.push('hid');   // v5.34: a tab / Starred pick can show a habit hidden on Home, or hide one
     if (h.kind === 'bad') c.push('bad');
     if (w > 0) c.push('past'); else if (w < 0) c.push('soon');
     if (isRep(h)) { var r = rep(h); if (r.due > 0) c.push('late'); if (!r.show) c.push(r.lastMiss ? 'gone' : 'rest'); }
@@ -632,30 +665,32 @@
     if (v === 'arch') return !!(h.archived || (g && g.archived));
     if (v === 'star') return !!(h.star || (g && g.star));
     if (v === 'done') return doneToday(h);
-    if (v === 'all') return tabsMode() === 'off' || !tabOf(h);   // Main = habits with no tab of their own
-    var st = sprOf(v); if (st) return sprIn(st, h);
-    var tb = tabOf(h); return !!tb && tb.id === v;
+    if (v === 'all') return true;   // v5.34: Home = every habit
+    var t = S.tab(v); return !!t && inTab(t, h);
   }
   // Habits on screen, in order. A group shows when it belongs itself, or (as context) when one of its sub-habits does.
+  // v5.34 Starred / tabs: a picked sub-habit sits under its (unpicked) group as context, or on its own row (soloIn).
   function shownList() {
-    var v = view(), all = S.habits(), keep = {};
+    var v = view(), all = S.habits(), keep = {}, pk = v === 'star' || isTabV(v);
     all.forEach(function (h) {
       if (h.parent && S.habit(h.parent)) return;
       if (!base(h, v)) return;
       var ss = subs(h.id).filter(function (x) { return base(x, v) && member(x, v); });
       if (h.endAll && v !== 'arch' && v !== 'done' && liveSubs(h.id).length && !liveSubs(h.id).some(function (x) { return base(x, v); })) return;   // every sub-habit done / time's up / put away
-      if (member(h, v) || ss.length) { if (member(h, v) || v !== 'star' || S.d.settings.starGroups !== false) keep[h.id] = 1; ss.forEach(function (x) { keep[x.id] = 1; }); }
+      var inner = pk ? ss.filter(function (x) { return !soloIn(x, v); }) : ss;
+      if (pk) ss.forEach(function (x) { if (soloIn(x, v)) keep[x.id] = 1; });
+      if (member(h, v) || inner.length) { keep[h.id] = 1; inner.forEach(function (x) { keep[x.id] = 1; }); }
     });
     return all.filter(function (h) { return keep[h.id]; });
   }
   var lastWin = '';
   function winSig() { return S.habits().map(function (h) { return winOf(h); }).join(''); }
   function showCounts(v) {   // per kind, among this view's habits; plus how many are hidden now
-    var s = SH(), n = { hid: 0 };
+    var s = SH(), n = { tuck: 0 };
     S.habits().forEach(function (h) {
-      var tb = tabOf(h); if (isGroup(h) || (tb && tb.hidden) || !member(h, v)) return;
+      if (isGroup(h) || !member(h, v)) return;
       var c = cats(h); c.forEach(function (k) { n[k] = (n[k] || 0) + 1; });
-      if (v !== 'arch' && c.some(function (k) { return !s[k]; })) n.hid++;
+      if (v !== 'arch' && c.some(function (k) { return !s[k]; })) n.tuck++;
     });
     return n;
   }
@@ -676,7 +711,7 @@
       (shwEdit ? '' : '<a href="#" data-act="shwFull">' + (u.showFull ? 'Short' : 'See all') + '</a>') +
       '<button class="dtl" data-act="shwDesc" aria-pressed="' + dsc + '"><i class="tgl' + (dsc ? ' on' : '') + '"></i>Notes</button>' +
       '<button class="ib' + (shwEdit ? ' lit' : '') + '" data-act="shwPen" aria-label="' + (shwEdit ? 'Done' : 'Choose short list') + '">' + (shwEdit ? ICON.check : ICON.pen) + '</button></div>' +
-      '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.hid ? n.hid + ' tucked away' : 'Everything showing') + '</div>' + h +
+      '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.tuck ? n.tuck + ' tucked away' : 'Everything showing') + '</div>' + h +
       (shwEdit ? '' : '<div class="shf"><a href="#" data-act="shwAll">Show everything</a><a href="#" class="muted" data-act="shwUsual">Back to my usual</a></div>');
     if (sheetOpen === 'show') { sheet.innerHTML = html; } else showSheet('show', html, 'shw');
     var rb = root.querySelector('.rib'); sheet.style.bottom = rb ? Math.max(0, innerHeight - rb.getBoundingClientRect().top) + 'px' : '';
@@ -707,60 +742,50 @@
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';
       };
       var card = function (h) {
-        var grp = isGroup(h), noHd = grp && SH().heads === false, ss = grp && (noHd || !folded(h.id)) ? subs(h.id).filter(function (x) { return shown[x.id]; }) : [];
-        if (v === 'star') ss.sort(byStar);
+        var grp = isGroup(h), noHd = grp && SH().heads === false, ss = grp && (noHd || !folded(h.id)) ? subs(h.id).filter(function (x) { return shown[x.id] && !soloIn(x, v); }) : [];
+        if (v === 'star' || isTabV(v)) ss.sort(byStar);
         if (noHd) return ss.length ? '<div class="grp isgrp nohd" data-grp="' + h.id + '">' +   // v5.30 "Group names" off: same card, no group row, always open
           ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === 0 ? ' rt' : '') + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>' : '';
         return '<div class="grp' + (grp ? ' isgrp' : '') + '" data-grp="' + h.id + '">' +
           rowHtml(h, ' gtop rt' + (ss.length ? '' : ' rb'), grp) +
           ss.map(function (x, i) { return rowHtml(x, ' sub' + (i === ss.length - 1 ? ' rb' : ''), false); }).join('') + '</div>';
       };
-      var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent) || !shown[h.parent]; }), rows;
-      if (v === 'star') tops.sort(byStar);
-      if (mode === 'off' && (v === 'all' || v === 'star') && S.tabs().length) {
-        // One page, a header per tab: habits with no tab first, then each tab's habits under its name.
-        // SL 41: tap a header to fold/unfold that tab's section (ui.secFold, this phone only); headers stay pinned under the date row.
-        var by = function (id) { return tops.filter(function (h) { var t = S.tab(h.tab); return (t ? t.id : null) === id; }); };
-        var sf = S.d.ui.secFold || {};
-        var sec = function (id, name, hs) {
-          var shut = !!sf[id];
-          return '<button class="sech" data-act="secFold" data-sec="' + id + '"><svg class="chev' + (shut ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg><span>' + esc(name) + '</span>' +
-            (shut ? '<em>' + hs.length + '</em>' : '') + '</button>' + (shut ? '' : hs.map(card).join(''));
-        };
-        rows = (by(null).length && visTabs().length ? sec('main', 'Main', by(null)) : by(null).map(card).join('')) + visTabs().map(function (t) {
-          var hs = by(t.id); return hs.length ? sec(t.id, t.name, hs) : '';
-        }).join('');
-      } else rows = tops.map(card).join('');
+      var tops = list.filter(function (h) { return !h.parent || !S.habit(h.parent) || !shown[h.parent] || soloIn(h, v); }), rows;
+      if (v === 'star' || isTabV(v)) tops.sort(byStar);
+      rows = tops.map(card).join('');
       var n = sel ? Object.keys(sel).length : 0;
-      var bar, logo = '<button class="logo" data-act="home" aria-label="Main"><img src="icons/icon-192.png" alt=""></button>';
+      var bar, logo = '<button class="logo" data-act="home" aria-label="Home"><img src="icons/icon-192.png" alt=""></button>';
       // v5.5 tab strip: Main first, full name on the open tab, short name on the others; side-scrolls
       // Full names; fitChips() swaps inactive tabs to their short names only when the strip runs out of room
-      var chips = '<div class="chips' + (tp ? ' editing' : '') + '" id="chips">' + [{ id: 'all', name: 'Main' }].concat(stripTabs()).map(function (t) {
+      var sOn = stripOn();   // v5.34: the strip holds only his tabs (Home is on the bottom bar); off via the Show drawer
+      var chips = '<div class="chips' + (tp ? ' editing' : '') + '" id="chips">' + stripTabs().map(function (t) {
           return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (t.sprint ? ' spr' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
         }).join('') + '</div>';   // new tabs: hold any tab → panel → New
-      var tpan = tp && mode !== 'off' ? tabPanel() : '';
+      var tpan = tp ? tabPanel() : '';
       var gOn = f.starGroups !== false;
-      var vbar = spT ? '<div class="vbar spv"><span>' + esc(sprHead(spT)) + '</span><button class="flip" data-act="sprEditOpen" data-tab="' + spT.id + '">Targets ' + ICON.pen + '</button></div>' : v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
+      var tHd = isTabV(v) && !spT ? sprHead(S.tab(v)) : '';
+      var vbar = tHd ? '<div class="vbar"><span>' + esc(tHd) + '</span></div>' : spT ? '<div class="vbar spv"><span>' + esc(sprHead(spT)) + '</span><button class="flip" data-act="sprEditOpen" data-tab="' + spT.id + '">Targets ' + ICON.pen + '</button></div>' : v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
         : mode === 'top' && VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '';
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
         (S.d.settings.skipDays ? '<button class="ib' + (allSkipped() ? ' lit' : '') + '" data-act="selSkip" aria-label="' + (allSkipped() ? 'Unskip today' : 'Skip today') + '"' + (n ? '' : ' disabled') + '>' + ICON.skip + '</button>' : '') +
-        '<button class="ib" data-act="sprAddOpen" aria-label="Add to sprint"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>' +
+        '<button class="ib" data-act="sprAddOpen" aria-label="Add to tab"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>' +
         '<button class="ib" data-act="selHide" aria-label=""' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
-      else if (mode === 'top') bar = '<header class="top tstrip">' + logo + chips + syncBtn() + '<button class="ib" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>' + tpan + vbar;
-      else bar = '<header class="top">' + logo + '<h1>' + esc(v === 'all' && mode === 'off' ? 'Habits' : VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
+      else if (mode === 'top') bar = '<header class="top' + (sOn ? ' tstrip' : '') + '">' + logo + (sOn ? chips : '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>') + syncBtn() + '<button class="ib" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>' + tpan + vbar;
+      else bar = '<header class="top">' + logo + '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
         '<button class="ib" data-act="add" aria-label="Add habit">' + ICON.plus + '</button>' +
         syncBtn() + '<button class="ib" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>' + vbar;
       var shc = showCounts(v), tabV = !VIEW_NAME[v] || v === 'all';
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
-      var ribbon = (mode === 'bottom' && !sel ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
+      var ribbon = (mode === 'bottom' && !sel && sOn ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
         rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
+        rb('home', ICON.home, 'Home', v === 'all').replace('<button ', '<button data-hold="home" ') +   // v5.34: tap = Home, hold = list of tabs
         rb('doneToggle', ICON.doneDay, 'Done', v === 'done') +
-        rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.hid ? '<i class="bdg hid">' + shc.hid + '</i>' : '') +
+        rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.tuck ? '<i class="bdg hid">' + shc.tuck + '</i>' : '') +
         (mode === 'top' ? rb('add', ICON.plus, 'Add', false) : '') +
         rb('overview', ICON.chart, 'Stats', sheetOpen === 'ov' || sheetOpen === 'sprst') +
         (all.some(isGroup) ? '<button class="rbtn ionly" data-act="foldCycle" aria-label="' + { open: 'All groups expanded', shut: 'All groups collapsed', man: 'Groups as set in Edit' }[foldMode()] + '">' +
@@ -768,15 +793,16 @@
         rb('weight', ICON.scale, 'Weight', false) + '</nav>';
       var empty = {
         star: 'No starred habits yet. Hold a habit’s name, then tap ☆.',
+        tab: isTabV(v) && !tabN(S.tab(v)) ? 'Nothing here yet. A tab shows habits you pick from Home.' : '',
         done: 'Nothing done yet today.',
         arch: 'No archived habits.',
-      }[v];
+      }[isTabV(v) ? 'tab' : v];
       var nd = !list.length && !SH().rest ? shc.rest || 0 : 0;
       var demoBar = S.demo ? '<div class="demobar"><span>Demo data · your own habits are safe</span><button class="btn sm" data-act="demoOff">Exit demo</button></div>' : '';
       root.innerHTML = bar + demoBar +
         (list.length ? '<div class="sc" id="sc"><div class="grid" id="grid">' + head + rows + '</div><div class="swp" id="swp"></div></div>'
-          : empty ? '<div class="empty"><p>' + empty + '</p></div>'
-          : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : shc.hid ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (shc.hid ? '<p class="small">' + shc.hid + ' tucked away — the eye below shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'shw') + '">' + (tabV ? 'Add a habit to this tab' : 'What’s on your list') + '</button></div>'
+          : empty ? '<div class="empty"><p>' + empty + '</p>' + (isTabV(v) ? '<button class="btn pri" data-act="add">Pick habits from Home</button>' : '') + '</div>'
+          : all.length ? '<div class="empty"><p>' + (nd ? 'Nothing due today here.' : shc.tuck ? 'All done for now.' : 'Nothing to show here.') + '</p>' + (shc.tuck ? '<p class="small">' + shc.tuck + ' tucked away — the eye below shows them.</p>' : '') + '<button class="btn" data-act="' + (tabV ? 'add' : 'shw') + '">' + (tabV ? (isTabV(v) ? 'Pick more from Home' : 'Add a habit') : 'What’s on your list') + '</button></div>'
           : '<div class="empty"><p>No habits yet.</p><button class="btn pri" data-act="add">Add your first habit</button><button class="btn" data-act="starters">Start from examples</button><button class="btn" data-act="demoOn">Try demo data</button></div>') + ribbon;
       SPT = null;
       root.classList.toggle('sublines', f.subLines !== false);
@@ -983,7 +1009,7 @@
     if (!lp.fired) { if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { lpCancel(); lp = null; } return; }
     if (!lp.id) return;
     var p;
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { p = lp; lp = null; shiftStart(p, e); }
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && !isTabV(view())) { p = lp; lp = null; shiftStart(p, e); }   // v5.34: groups change on Home only
     else if (Math.abs(dy) > 8) { p = lp; lp = null; dragStart(p, e); }
   });
   root.addEventListener('pointercancel', function () { if (drag) dragEnd(true); lpCancel(); lp = null; });
@@ -1007,7 +1033,7 @@
   root.addEventListener('pointerdown', function (e) { sw = e.target.closest('.swp, .empty') && !sel ? { x: e.clientX, y: e.clientY } : null; });
   root.addEventListener('pointerup', function (e) {
     if (!sw) return; var dx = e.clientX - sw.x, dy = e.clientY - sw.y; sw = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || tabsMode() === 'off') return;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
     var o = tabOrder(), i = o.indexOf(view()), j = i + (dx < 0 ? 1 : -1);
     if (i >= 0 && j >= 0 && j < o.length) { setView(o[j]); }
   });
@@ -1085,6 +1111,7 @@
     if (cancel) return App.render();
     var ids = [].map.call(document.querySelectorAll('#grid .hrow'), function (r) { return r.dataset.row; });
     if (view() === 'star') { S.d.settings.starOrd = ids.concat((S.d.settings.starOrd || []).filter(function (id) { return ids.indexOf(id) < 0 && S.habit(id); })); S.save(); return App.render(); }   // own order, real order untouched
+    var tv = isTabV(view()) && S.tab(view()); if (tv) { tv.ord = ids.concat((tv.ord || []).filter(function (id) { return ids.indexOf(id) < 0 && S.habit(id); })); S.putTab(tv); return App.render(); }   // v5.34: each tab its own order
     S.reorder(ids); App.render();
   }
 
@@ -1170,9 +1197,20 @@
      A day counts for a habit when it is scheduled, not skipped and after the habit started; today counts only once done.
      N-a-week / N-a-month habits are judged per period (done ÷ N × periods) and kept out of the daily chart. ---- */
   var ovR = 30, ovFrom = false;
+  /* v5.34 Stats filters: saved in settings.sfil [{ id, name, from, to (optional), ids }]; ui.ovF = the chip in use.
+     'tab:<id>' = the tab you opened Stats from (its habits; its dates when it has them). */
+  function ovFilter() {
+    var f = S.d.ui.ovF; if (!f) return null;
+    if (f.indexOf('tab:') === 0) { var t = S.tab(f.slice(4)); return t ? { tab: t.id, name: t.name, from: t.from, to: t.to, ids: t.items || {} } : null; }
+    var x = (S.d.settings.sfil || []).filter(function (q) { return q.id === f; })[0]; if (!x) return null;
+    var ids = {}; x.ids.forEach(function (id) { ids[id] = 1; }); return { id: x.id, name: x.name, from: x.from, to: x.to, ids: ids };
+  }
   function openOverview(again) {
-    var R = ovR, t = S.todayDate(), tk = S.today(), ws = S.d.settings.weekStart || 0;
-    var H = S.habits().filter(function (h) { return !h.parent && !h.archived; });
+    var F = ovFilter(), R = ovR, t = S.todayDate(), ws = S.d.settings.weekStart || 0;
+    if (F && F.to && F.to < S.today()) t = fromDn(kDn(F.to));
+    if (F && F.from) R = Math.max(1, Math.min(731, kDn(S.key(t)) - kDn(F.from) + 1));
+    var tk = S.key(t), now = S.today();
+    var H = S.habits().filter(function (h) { return !h.archived && (F ? F.ids[h.id] && !(h.parent && F.ids[h.parent]) : !h.parent); });
     var dN = [], dOk = [], rows = [], tdyN = 0, tdyOk = 0, cN = 0, cOk = 0, pN = 0, pOk = 0, bestS = 0, bestH = null;
     for (var i = 0; i < R; i++) { dN.push(0); dOk.push(0); }
     H.forEach(function (h) {
@@ -1184,7 +1222,7 @@
         if (per) { if (r.ok && !bad) (i < R ? a : b)[1]++; continue; }
         if (!scheduled(h, dt)) continue;
         if (k === tk && !bad) { tdyN++; if (r.ok) tdyOk++; }
-        if (k === tk && !r.ok) continue;
+        if (k === now && !r.ok) continue;
         var x = i < R ? a : b; x[0]++; if (r.ok) x[1]++;
         if (i < R) { dN[i]++; if (r.ok) dOk[i]++; }
         if (open) { if (r.ok) streak++; else open = false; }
@@ -1199,7 +1237,7 @@
     var perfect = 0, act = 0; dN.forEach(function (n, i) { if (n) { act++; if (dOk[i] === n) perfect++; } });
     var tile = function (l, v, e, cls) { return '<div class="tile"><span>' + l + '</span><b' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</b>' + (e ? '<em>' + e + '</em>' : '') + '</div>'; };
     var tiles = '<div class="tiles">' +
-      tile('Done today', tdyN ? tdyOk + '<small> / ' + tdyN + '</small>' : '—', tdyN ? (tdyOk === tdyN ? 'All done' : (tdyN - tdyOk) + ' to go') : 'Nothing due') +
+      tile(tk === now ? 'Done today' : 'Done on ' + dayTxt(kDn(tk)), tdyN ? tdyOk + '<small> / ' + tdyN + '</small>' : '—', tdyN ? (tdyOk === tdyN ? 'All done' : (tdyN - tdyOk) + ' to go') : 'Nothing due') +
       tile('On track · ' + R + ' days', cN ? pct(cur) : '—', dl == null ? '' : (dl > 0 ? '+' : '') + dl + ' pts vs the ' + R + ' days before', dl == null ? '' : dl > 0 ? 'up' : dl < 0 ? 'down' : '') +
       tile('Perfect days', perfect + '<small> / ' + act + '</small>', 'Every due habit done') +
       tile('Best run now', bestS ? bestS + '<small> in a row</small>' : '—', bestH ? esc(bestH.name) : '') + '</div>';
@@ -1231,14 +1269,48 @@
     var list = (good.length ? '<section class="stc"><h4>Each habit · last ' + R + ' days</h4>' + good.map(hrow).join('') + '</section>' : '') +
       (badR.length ? '<section class="stc"><h4>Bad habits · clean days</h4>' + badR.map(hrow).join('') + '</section>' : '');
     var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>Stats</h2></div>' +
-      '<div class="stats"><div class="seg">' + [[7, '7 days'], [30, '30 days'], [90, '90 days']].map(function (o) {
-        return '<button class="' + (R === o[0] ? 'on' : '') + '" data-act="ovRange" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="stats">' + ovChips(F, H.length, R, tk) + (F && F.from ? '' : '<div class="seg">' + [[7, '7 days'], [30, '30 days'], [90, '90 days']].map(function (o) {
+        return '<button class="' + (R === o[0] ? 'on' : '') + '" data-act="ovRange" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>') +
       (H.length ? tiles + chart + list + week + '<p class="small muted">Tap a habit for its own stats. ▲▼ = change in points against the ' + R + ' days before.</p>'
         : '<p class="muted">No habits yet.</p>') + '</div>';
     if (again && sheetOpen === 'ov') { var y = sheet.scrollTop; sheet.innerHTML = html; sheet.scrollTop = y; }
     else if (sheetOpen === 'stats') { sheetOpen = 'ov'; sheet.innerHTML = html; sheet.className = 'sheet page'; sheet.scrollTop = 0; }
     else showSheet('ov', html, 'page');
     App.render();
+  }
+
+  function ovChips(F, n, R, tk) {
+    var cur = S.d.ui.ovF || '', fl = S.d.settings.sfil || [];
+    var chip = function (id, name, hold) { return '<button class="tchip' + ((F ? cur : '') === id ? ' on' : '') + '" data-act="ovF" data-v="' + id + '"' + (hold ? ' data-hold="' + hold + '"' : '') + '>' + esc(name) + '</button>'; };
+    var dt = function (k) { var p = k.split('-'); return (+p[2]) + ' ' + MON3[+p[1] - 1]; }, end = fromDn(kDn(tk));
+    var st = new Date(end); st.setDate(end.getDate() - R + 1);
+    return '<div class="chips wrap ovf">' + chip('', 'All') + (F && F.tab ? chip(cur, F.name) : '') + fl.map(function (q) { return chip(q.id, q.name, 'f:' + q.id); }).join('') +
+      '<button class="tchip" data-act="fltNew" aria-label="New filter">+</button></div>' +
+      (F ? '<p class="small muted ovfl">' + dt(S.key(st)) + ' – ' + (tk === S.today() ? 'today' : dt(tk)) + ' · ' + n + ' habit' + (n === 1 ? '' : 's') + (F.id ? ' · hold the chip to edit' : '') + '</p>' : '');
+  }
+  function openFilterEdit(id) {
+    var x = (S.d.settings.sfil || []).filter(function (q) { return q.id === id; })[0], d0 = new Date(S.todayDate()); d0.setDate(d0.getDate() - 29);
+    App._flt = { id: x ? x.id : null, name: x ? x.name : '', from: x ? x.from : S.key(d0), to: x ? x.to || '' : '', on: {}, ft: '' };
+    (x ? x.ids : []).forEach(function (q) { App._flt.on[q] = 1; });
+    drawFilter();
+  }
+  function fltRead() { var o = App._flt, g = function (q) { return document.getElementById(q); }; if (g('flN')) { o.name = g('flN').value.trim(); o.from = g('flA').value; o.to = g('flB').value; } }
+  function drawFilter() {
+    var o = App._flt, on = o.on, tabs = S.tabs().filter(function (t) { return tabN(t); });
+    var row = function (h, sub) {
+      var via = sub && on[h.parent], c = !!on[h.id] || via;
+      return '<button class="mi trow pkr' + (sub ? ' pks' : '') + '" data-act="fltTog" data-id="' + h.id + '"' + (via ? ' disabled' : '') + '><span class="box' + (c ? ' on' : '') + '">' + (c ? ICON.check : '') + '</span>' +
+        '<span style="color:' + esc(h.color) + '">' + esc(h.name) + (isGroup(h) ? ' <small class="muted">whole group</small>' : '') + '</span></button>';
+    };
+    var body = S.habits().filter(function (h) { return !h.parent && !h.archived; }).map(function (h) { return row(h, false) + (isGroup(h) ? liveSubs(h.id).map(function (x) { return row(x, true); }).join('') : ''); }).join('');
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (o.id ? 'Edit filter' : 'New filter') + '</h2><button class="btn pri sm" data-act="fltSave">Save</button></div><div class="stats">' +
+      '<label class="fl">Name<input id="flN" value="' + esc(o.name) + '" placeholder="e.g. Morning routine" maxlength="30" autocomplete="off"></label>' +
+      '<div class="spd"><label class="fl">From<input type="date" id="flA" value="' + o.from + '"></label><label class="fl">To (optional)<input type="date" id="flB" value="' + o.to + '"></label></div>' +
+      '<p class="small muted">Leave To blank to run up to today.</p>' +
+      (tabs.length ? '<label class="fl">Start from a tab<select id="flT" data-act="fltTab" class="sel"><option value="">—</option>' + tabs.map(function (t) { return '<option value="' + t.id + '"' + (o.ft === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select><span class="small muted">Copies that tab’s habits below; change them freely.</span></label>' : '') +
+      '<h4 class="sph">Habits</h4>' + (body || '<p class="muted">No habits yet.</p>') +
+      (o.id ? '<div class="row"><button class="btn danger-o" data-act="fltDel">Delete filter</button></div>' : '') + '</div>';
+    if (sheetOpen === 'flt') { var y = sheet.scrollTop; sheet.innerHTML = html; sheet.scrollTop = y; } else showSheet('flt', html, 'page');
   }
 
   /* ---- v5 sync button in the top bar (only once signed in): green tick-cloud = synced, amber = changes waiting,
@@ -1435,7 +1507,11 @@
     var h = id ? S.habit(id) : null;
     draft = JSON.parse(JSON.stringify(h || S.newHabit()));
     draft._new = !h; draft._ttSet = !!h;
-    if (!h) { var v = view(); if (S.tab(v) && !sprOf(v)) draft.tab = v; if (sprOf(v)) draft._spr = v; if (v === 'star') draft.star = true; }
+    var pv = view();
+    if (!h && pv === 'star') draft.star = true;
+    // v5.34: opened from a tab / Starred where it is picked → that list's own settings sit on top of Edit
+    if (h && (pv === 'star' ? h.star : isTabV(pv) && ownIn(h, pv))) { draft._pv = pv; draft._pk = JSON.parse(JSON.stringify(pick(h, pv) || {})); }
+    draft._tabs = h ? S.tabs().filter(function (t) { return (t.items || {})[h.id]; }).map(function (t) { return t.id; }) : [];
     if (!draft.win) draft.win = { from: '', to: '' };
     if (!draft.miss) draft.miss = { t: 'drop', keep: null };
     if (draft.freq.t === 'week') draft.freq = { t: 'rep', n: 1, ev: 1, u: 'w', days: [0, 1, 2, 3, 4, 5, 6], from: 'sch', a: S.key(startOf(h)), md: 1, wn: Math.max(1, draft.freq.n || 1) };   // v5.32 old N-per-week
@@ -1501,7 +1577,7 @@
     var html =
       '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + (h._new ? 'New habit' : 'Edit habit') + '</h2>' +
       (!h._new && !h._from ? '<button class="ib" data-act="statOpen" aria-label="Stats">' + ICON.chart + '</button>' : '') + '<button class="btn pri sm" data-act="saveHabit">Save</button></div>' +
-      '<div class="form">' +
+      '<div class="form">' + (h._pv ? pickFields(h) : '') +
       '<label class="fl">Name<input id="fName" value="' + esc(h.name) + '" placeholder="e.g. Qur’an pages" enterkeyhint="done" autocomplete="off"></label>' +
       '<label class="fl">Subtitle (optional)<input id="fSub" value="' + esc(h.subt || '') + '" placeholder="Shown small under the name" enterkeyhint="done" autocomplete="off"></label>' +
       '<div class="fl">Colour<div class="sw">' + COLORS.map(function (c) {
@@ -1527,10 +1603,11 @@
           : h.type === 'num' ? (h.link === 'pg' ? 'Each day shows the pages you read in Hifz (all readings).' : 'Each day shows your Hifz memorisation minutes.')
           : 'Ticks on days the rule is met. Whole-page reads = a page counts once every one of its sections is read; reads of one section = done as soon as any single section reaches the number.') +
           ' Hifz never removes a mark you made yourself.</span></div>' : '') +
-      (!inG ? '<div class="fl">Tab<div class="chips wrap">' +
-        [{ id: '', name: 'Main' }].concat(regTabs()).map(function (t) {
-          return '<button class="tchip' + ((h.tab || '') === t.id ? ' on' : '') + '" data-act="ef" data-f="tab" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</button>';
-        }).join('') + '</div></div>' : '') +
+      (S.tabs().length && !h.archived ? '<div class="fl">In tabs<div class="chips wrap">' +
+        S.tabs().map(function (t) {
+          var on = h._tabs.indexOf(t.id) >= 0;
+          return '<button class="tchip' + (on ? ' on' : '') + '" data-act="ef" data-f="tabIn" data-v="' + t.id + '">' + esc(t.name) + (t.hidden ? ' (archived)' : '') + '</button>';
+        }).join('') + '</div><span class="small muted">The habit stays on Home; a tab just shows it too. Ticks are shared.</span></div>' : '') +
       '<div class="fl">Time window' + (grp ? ' (whole group)' : '') + '<div class="two">' + edgeField('From', 'Show from', h.win.from) + edgeField('To', 'Hide after', h.win.to) + '</div>' +
         (/p:/.test(h.win.from + h.win.to) && !prayerToday() ? '<span class="small" style="color:var(--bad)">Set your location in Settings → Prayer times, or prayer-based edges are ignored.</span>' : '') +
         '<span class="small muted">Outside this time it leaves today’s list; the eye on the bottom bar can show it. Leave blank for all day.' +
@@ -1604,6 +1681,41 @@
       (td ? '<p class="small muted">Today in Hifz: ' + td.min + ' min · ' + td.pg + ' pages read · ' + td.tl + ' whole-page reads · best section read ' + td.ts + '× → <b>' + (HifzLink.test(r, td) ? 'tick ✓' : 'no tick yet') + '</b></p>' : '') + '</div>';
   }
   // "In group": put a habit under another (or take it out) without the hold-and-slide gesture
+  // v5.34 + on a tab: pick habits (or whole groups) from Home. Archived habits aren't listed.
+  function openPicker(tid) {
+    var t = S.tab(tid); if (!t) return; App._pick = { t: t, on: {} };
+    Object.keys(t.items || {}).forEach(function (id) { App._pick.on[id] = 1; });
+    drawPicker();
+  }
+  function drawPicker() {
+    var o = App._pick, on = o.on, n = 0;
+    var row = function (h, sub) {
+      var via = sub && on[h.parent], c = !!on[h.id] || via; if (on[h.id]) n++;
+      return '<button class="mi trow pkr' + (sub ? ' pks' : '') + '" data-act="pkTog" data-id="' + h.id + '"' + (via ? ' disabled' : '') + '><span class="box' + (c ? ' on' : '') + '">' + (c ? ICON.check : '') + '</span>' +
+        '<span style="color:' + esc(h.color) + '">' + esc(h.name) + (isGroup(h) ? ' <small class="muted">whole group</small>' : '') + '</span></button>';
+    };
+    var body = S.habits().filter(function (h) { return !h.parent && !h.archived; }).map(function (h) {
+      return row(h, false) + (isGroup(h) ? liveSubs(h.id).map(function (x) { return row(x, true); }).join('') : '');
+    }).join('');
+    var html = '<div class="ptop"><button class="ib" data-act="close" aria-label="Back">' + ICON.back + '</button><h2>' + esc(o.t.name) + '</h2><button class="btn pri sm" data-act="pkSave">Done</button></div>' +
+      '<div class="stats"><p class="small muted">Pick from Home. A ticked group brings all its sub-habits; tick single sub-habits to show just those. Done here is done everywhere.</p>' + (body || '<p class="muted">No habits on Home yet.</p>') + '</div>';
+    if (sheetOpen === 'pick') { var y = sheet.scrollTop; sheet.innerHTML = html; sheet.scrollTop = y; } else showSheet('pick', html, 'page');
+  }
+  // v5.34 "In <tab>" section of Edit: this list's own colour, shown/hidden, group, time window; or remove it from the list
+  function pickFields(h) {
+    var pv = h._pv, p = h._pk, nm = pv === 'star' ? 'Starred' : S.tab(pv).name, g = h.parent && S.habit(h.parent);
+    if (h._prm) return '<div class="pkf"><p>' + (pv === 'star' ? 'Unstarred' : 'Removed from “' + esc(nm) + '”') + ' when you save. <a href="#" data-act="ef" data-f="prm">Undo</a></p></div>';
+    var sub = g && !ownIn(g, pv), solo = p.solo != null ? !!p.solo : pv === 'star' ? S.d.settings.starGroups === false : true;
+    return '<div class="pkf"><h4>In ' + esc(nm) + ' <small class="muted">· only here</small></h4>' +
+      '<div class="fl">Colour<div class="sw"><button class="dot same' + (!p.col ? ' on' : '') + '" style="background:' + esc(h.color) + '" data-act="ef" data-f="pcol" data-v="" aria-label="Same as the habit">=</button>' + COLORS.map(function (c) {
+        return '<button class="dot' + (c === p.col ? ' on' : '') + '" style="background:' + c + '" data-act="ef" data-f="pcol" data-v="' + c + '" aria-label="Colour ' + c + '"></button>'; }).join('') + '</div><span class="small muted">= keeps the habit’s own colour.</span></div>' +
+      '<div class="fl">On this list' + seg('phid', p.hid == null ? '' : p.hid ? '1' : '0', [['', 'Same as Home'], ['0', 'Shown'], ['1', 'Hidden']]) + '</div>' +
+      (sub ? '<div class="fl">Group' + seg('psolo', solo ? '1' : '0', [['0', 'Under ' + g.name], ['1', 'On its own']]) + '</div>' : '') +
+      '<div class="fl">Time window' + seg('pwin', p.win ? '1' : '', [['', 'Same as the habit'], ['1', 'Own here']]) +
+        (p.win ? '<div class="two">' + edgeField('TFrom', 'Show from', p.win.from) + edgeField('TTo', 'Hide after', p.win.to) + '</div>' : '') + '</div>' +
+      '<div class="row"><button class="btn danger-o" data-act="ef" data-f="prm">' + (pv === 'star' ? 'Unstar' : 'Remove from ' + esc(nm)) + '</button></div>' +
+      '<h4 class="pkh">The habit · everywhere</h4></div>';
+  }
   function grpPick(h) {
     var ts = S.habits().filter(function (x) { return !x.parent && !x.archived && x.id !== h.id; });
     return '<label class="fl">In group<select id="fPar" class="sel"><option value="">None (its own row)</option>' +
@@ -1631,6 +1743,7 @@
     if (g('fTick') != null) { var tk = parseFloat(g('fTick').replace(',', '.')); draft._tick = isFinite(tk) && tk >= 0 ? tk : null; }
     if (draft.hzr && document.getElementById('hzM0')) draft.hzr.c.forEach(function (q, i) { var m = document.getElementById('hzM' + i), n = document.getElementById('hzN' + i); if (m) q.m = m.value; if (n) { var x = parseInt(n.value, 10); q.n = isFinite(x) && x >= 0 ? x : 0; } });
     if (document.getElementById('fFromK')) draft.win = { from: edgeRead('From'), to: edgeRead('To') };
+    if (document.getElementById('fTFromK') && draft._pk && draft._pk.win) draft._pk.win = { from: edgeRead('TFrom'), to: edgeRead('TTo') };
     if (g('fAggN') != null) { var m = parseInt(g('fAggN'), 10); draft.agg = draft.agg || { t: 'count' }; draft.agg.n = m > 0 ? m : 0; }
   }
 
@@ -1688,12 +1801,11 @@
       grp('Account &amp; sync', acct) +
       grp('Look', segRow('Theme', '', seg('theme', 'theme', [['dark', 'Dark'], ['light', 'Light']], s.theme || 'dark')) +
         segRow('Tabs', { bottom: 'Your tabs sit in a strip just above the bottom bar. Hold a tab for New, Rename, Archive, Delete; swipe the blank area under the list to change tab.',
-          top: 'Your tabs sit across the top; Add moves to the bottom bar. Hold a tab for New, Rename, Archive, Delete.',
-          off: 'No tab strip: one page, with each tab’s name as a header above its habits. Tap a header to fold it.' }[tabsMode()],
-          seg('tabsMode', 'tabsMode', [['top', 'Top'], ['bottom', 'Bottom'], ['off', 'One page']], tabsMode()))) +
+          top: 'Your tabs sit across the top; Add moves to the bottom bar. Hold a tab for New, Rename, Archive, Delete.' }[tabsMode()] + ' Tabs show habits picked from Home. Hide the strip with the eye; hold Home to switch.',
+          seg('tabsMode', 'tabsMode', [['top', 'Top'], ['bottom', 'Bottom']], tabsMode()))) +
       grp('Habits', (S.demo ? '' : go('starters', 'Add from examples', '', 'Pick ready-made habits (Qur’an pages, Salah in Masjid, workout…). They start with no history.')) +
-        (tabsMode() === 'off' ? go('tabsSheet', 'Tabs', S.tabs().filter(function (t) { return !t.hidden; }).length, 'Add, rename, archive or delete tabs.') : '') +
-        (S.tabs().some(isSpr) ? go('sprList', 'Sprints', S.tabs().filter(isSpr).length, 'Every sprint, running or ended, with its report.') : '') +
+        go('tabsSheet', 'Tabs', visTabs().length, 'Every tab; New tab. Same list as holding Home on the bottom bar.') +
+        (S.tabs().some(function (t) { return tPhase(t) === 'end'; }) ? go('sprList', 'Ended tabs', S.tabs().filter(function (t) { return tPhase(t) === 'end'; }).length, 'Tabs past their end date, with the report for ones that had targets.') : '') +
         (archT ? go('hiddenTabs', 'Archived tabs', S.tabs().filter(function (t) { return t.hidden; }).length, 'Tabs you archived, with their habits. Hold one to bring it back.') : '') +
         go('ptOpen', 'Prayer times', s.pt && s.pt.lat != null ? esc(s.pt.name || 'Set') : 'Not set', 'Lets a time window start or end at a prayer, e.g. “Asr − 15 min”.')) +
       grp('Marking', tg('shortPress', 'Mark with a short tap', 'Off: hold a day to mark it, so a stray tap changes nothing.') +
@@ -1749,61 +1861,40 @@
   }
 
   /* ---- v4 Tabs: sheet (ribbon layout), new/rename, hold a tab for its actions ---- */
-  function tabAll(id) { return S.habits().filter(function (h) { return !h.parent && h.tab === id; }).length; }   // incl. archived
-  function tabCount(id) { return S.habits().filter(function (h) { return !h.parent && h.tab === id && !h.archived; }).length; }
+  function tabCount(id) { var t = S.tab(id); return t ? tabN(t) : 0; }
+  // v5.34 hold Home on the bottom bar: every tab to jump to (works with the strip hidden); not-yet-started ones show their start
   function openTabsSheet() {
-    var v = view(), hid = S.tabs().filter(function (t) { return t.hidden; });
-    showSheet('tabs', '<h3>Tabs</h3>' +
-      '<button class="mi trow' + (v === 'all' ? ' on' : '') + '" data-act="goTab" data-tab="all"><span>Main</span></button>' +
-      visTabs().map(function (t) {
-        return '<button class="mi trow' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + '</span><small>' + tabCount(t.id) + '</small></button>';
+    var v = view(), hid = S.tabs().filter(function (t) { return t.hidden; }), end = S.tabs().filter(function (t) { return !t.hidden && tPhase(t) === 'end'; });
+    showSheet('tabs', '<h3>Go to</h3>' +
+      '<button class="mi trow' + (v === 'all' ? ' on' : '') + '" data-act="goTab" data-tab="all"><span>' + ICON.home + ' Home</span></button>' +
+      visTabs().filter(function (t) { return tPhase(t) !== 'end'; }).map(function (t) {
+        var hd = tPhase(t) === 'pre' ? sprHead(t) : '';
+        return '<button class="mi trow' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + (hd ? '<small class="muted" style="display:block">' + esc(hd) + '</small>' : '') + '</span><small>' + tabN(t) + '</small></button>';
       }).join('') +
       '<button class="mi trow add" data-act="newTab">' + ICON.plus + '<span>New tab</span></button>' +
+      (end.length ? '<button class="mi trow muted" data-act="sprList"><span>Ended tabs</span><small>' + end.length + '</small></button>' : '') +
       (hid.length ? '<button class="mi trow muted" data-act="hiddenTabs"><span>Archived tabs</span><small>' + hid.length + '</small></button>' : '') +
       '<p class="small muted hint">Hold a tab to edit, archive, move or delete it.</p>');
   }
   function openHiddenTabs() {
     var hid = S.tabs().filter(function (t) { return t.hidden; });
-    showSheet('hidden', '<h3>Archived tabs</h3><p class="small muted">Archived tabs and their habits stay out of every list. Tap or hold one to bring it back.</p>' +
+    showSheet('hidden', '<h3>Archived tabs</h3><p class="small muted">Archived tabs stay off the strip; their habits stay on Home. Tap or hold one to bring it back.</p>' +
       (hid.length ? hid.map(function (t) { return '<button class="mi trow" data-act="tabActs" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + '</span><small>' + tabCount(t.id) + '</small></button>'; }).join('')
         : '<p class="muted">None.</p>') + '<div class="row end"><button class="btn" data-act="close">Close</button></div>');
   }
-  function askTabName(t) {   // v5.5: name + optional short name (shown on the strip when the tab isn't open)
-    showSheet('tabname', '<h3>' + (t ? 'Edit tab' : 'New tab') + '</h3>' + (t ? '' : '<div class="seg" style="margin-bottom:10px"><button class="on">Regular</button><button data-act="sprNew">Sprint</button></div>') + '<input id="tabIn" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Daily, Weekly, Monthly" maxlength="30" enterkeyhint="next" autocomplete="off">' +
-      '<label class="fl" style="margin-top:10px">Short name (optional)<input id="tabSh" value="' + esc(t && t.short || '') + '" placeholder="e.g. Wk" maxlength="10" enterkeyhint="done" autocomplete="off"></label>' +
-      '<p class="small muted" style="margin-top:6px">The full name shows on the open tab, the short name on the others.</p>' +
-      '<div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="tabSave">' + (t ? 'Save' : 'Create') + '</button></div>', 'attop');
-    var inp = document.getElementById('tabIn'), sh = document.getElementById('tabSh'); inp.focus(); inp.select();
-    App._tab = function () {
-      var name = inp.value.trim(), short = sh.value.trim(); if (!name) return App.toast('Give the tab a name');
-      closeSheet(function () {
-        if (t) { t.name = name; t.short = short; S.putTab(t); App.render(); }
-        else { var nt = S.putTab({ name: name, short: short }); if (tabsMode() === 'off') App.render(); else setView(nt.id); App.toast('Tab “' + name + '” created'); }
-      });
-    };
-    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sh.focus(); });
-    sh.addEventListener('keydown', function (e) { if (e.key === 'Enter') App._tab(); });
-  }
   function openTabActs(id) {
     var nt = '<button class="mi" data-act="newTab">' + ICON.plus + ' New tab</button>';
-    if (id === 'all') return showSheet('tabacts', '<h3>Main</h3>' + nt + '<p class="small muted hint">Main is always first and can’t be renamed, archived or deleted.</p>');
+    if (id === 'all' || id === 'home') return openTabsSheet();
     var t = S.tab(id); if (!t) return;
     var vis = visTabs(), i = vis.findIndex(function (x) { return x.id === id; });
-    var lr = tabsMode() === 'off' ? ['Move up', 'Move down'] : ['Move left', 'Move right'], n = tabAll(id);
+    var lr = ['Move up', 'Move down'];
     showSheet('tabacts', '<h3>' + esc(t.name) + '</h3>' + nt +
-      '<button class="mi" data-act="tabRename" data-tab="' + id + '">Edit name &amp; short name</button>' +
+      '<button class="mi" data-act="tabRename" data-tab="' + id + '">Edit name, dates &amp; habits</button>' +
       (t.hidden ? '<button class="mi" data-act="tabHide" data-tab="' + id + '">Unarchive tab</button>' :
-        '<button class="mi" data-act="tabHide" data-tab="' + id + '">Archive tab and its habits</button>') +
+        '<button class="mi" data-act="tabHide" data-tab="' + id + '">Archive tab</button>') +
       (!t.hidden && i > 0 ? '<button class="mi" data-act="tabMove" data-tab="' + id + '" data-d="-1">' + lr[0] + '</button>' : '') +
       (!t.hidden && i < vis.length - 1 ? '<button class="mi" data-act="tabMove" data-tab="' + id + '" data-d="1">' + lr[1] + '</button>' : '') +
-      (n ? '<button class="mi muted" disabled>Delete tab<br><span class="small">Only an empty tab can be deleted — it still has ' + n + ' habit' + (n > 1 ? 's' : '') + ' (archived ones count). Move or delete them first.</span></button>'
-        : '<button class="mi danger-t" data-act="tabDel" data-tab="' + id + '">Delete tab</button>'));
-  }
-  function openMoveToTab() {
-    showSheet('movetab', '<h3>Move to tab</h3>' +
-      '<button class="mi trow" data-act="moveTo" data-tab=""><span>Main</span></button>' +
-      regTabs().map(function (t) { return '<button class="mi trow" data-act="moveTo" data-tab="' + t.id + '"><span>' + esc(t.name) + (t.hidden ? ' (hidden)' : '') + '</span></button>'; }).join('') +
-      '<button class="mi trow add" data-act="moveToNew">' + ICON.plus + '<span>New tab…</span></button>');
+      '<button class="mi danger-t" data-act="tabDel" data-tab="' + id + '">Delete tab<br><span class="small muted">Its habits stay on Home.</span></button>');
   }
   // Hold a tab chip / tab row (450 ms) → its actions. A short tap still opens the tab.
   /* ---- v5.6 Tab panel: hold a tab → a slim icon panel beside the strip (tabs stay visible, the held one outlined):
@@ -1813,12 +1904,12 @@
   function openTp(id) { if (!tp) history.pushState({ tp: 1 }, ''); tp = { id: id }; App.render(); }
   function closeTp() { if (tp && !closing) { closing = true; history.back(); } }
   function tabPanel() {
-    var t = S.tab(tp.id), main = !t, n = t ? tabAll(t.id) : 0, sa = !!S.d.ui.showArchTabs;
+    var t = S.tab(tp.id), main = !t, sa = !!S.d.ui.showArchTabs;
     var ib = function (act, icon, label, dis) { return '<button class="pbtn' + (dis ? ' dis' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span></button>'; };
     return '<div class="tpanel"><div class="tpbtns">' + ib('newTab', ICON.plus, 'New') + ib('tpRename', ICON.pen, 'Rename', main) +
-      ib('tpArchive', t && t.hidden ? ICON.unarchive : ICON.archive, t && t.hidden ? 'Unarchive' : 'Archive', main) + ib('tpDelete', ICON.bin, 'Delete', main || n > 0) +
+      ib('tpArchive', t && t.hidden ? ICON.unarchive : ICON.archive, t && t.hidden ? 'Unarchive' : 'Archive', main) + ib('tpDelete', ICON.bin, 'Delete', main) +
       '<button class="flip pflip" data-act="tpArchShow" aria-pressed="' + sa + '"><i class="tgl' + (sa ? ' on' : '') + '"></i><span>Archived</span></button>' +
-      ib('tpDone', ICON.check, 'Done') + '</div><p class="tphint">' + esc(main ? 'Main' : t.name) + ' · drag tabs sideways to reorder</p></div>';
+      ib('tpDone', ICON.check, 'Done') + '</div><p class="tphint">' + esc(main ? 'Tabs' : t.name) + ' · drag tabs sideways to reorder</p></div>';
   }
   function reorderTabs(ids) {
     var all = S.tabs(), shown = {}, q = ids.slice(), now = Date.now(); ids.forEach(function (id) { shown[id] = 1; });
@@ -1868,7 +1959,7 @@
   document.addEventListener('pointerdown', function (e) {
     var el = e.target.closest('[data-hold]'); if (!el || e.button > 0) return;   // tab rows in the Tabs / Archived tabs sheets
     thQuiet = false;
-    th = { x: e.clientX, y: e.clientY, t: setTimeout(function () { th = null; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20); var id = el.dataset.hold || el.dataset.tab; if (sheetOpen) closeSheet(function () { openTabActs(id); }); else openTabActs(id); }, HOLD) };
+    th = { x: e.clientX, y: e.clientY, t: setTimeout(function () { th = null; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20); var id = el.dataset.hold || el.dataset.tab, go = id.indexOf('f:') === 0 ? function () { openFilterEdit(id.slice(2)); } : function () { openTabActs(id); }; if (sheetOpen) closeSheet(go); else go(); }, HOLD) };
   });
   document.addEventListener('pointermove', function (e) { if (th && (Math.abs(e.clientX - th.x) > 10 || Math.abs(e.clientY - th.y) > 10)) { clearTimeout(th.t); th = null; } });
   ['pointerup', 'pointercancel'].forEach(function (n) { document.addEventListener(n, function () { if (th) { clearTimeout(th.t); th = null; } }); });
@@ -1876,7 +1967,16 @@
 
   /* ---- Actions ---- */
   var actions = {
-    add: function () { openEdit(null); },   // a new habit lands in the tab you're looking at (or starred, on Starred)
+    add: function () { var v = view(); if (isTabV(v)) return sheetOpen ? closeSheet(function () { openPicker(v); }) : openPicker(v); openEdit(null); },   // v5.34: a tab only picks from Home; Starred starts new habits starred
+    pkTog: function (el) { var o = App._pick, id = el.dataset.id; if (o.on[id]) delete o.on[id]; else o.on[id] = 1; drawPicker(); },
+    pkSave: function () {
+      var o = App._pick, t = o.t, it = t.items = t.items || {}, on = o.on, add = 0;
+      Object.keys(on).forEach(function (id) { var h = S.habit(id); if (h && h.parent && on[h.parent]) delete on[id]; });   // the whole group is picked
+      Object.keys(it).forEach(function (id) { if (!on[id]) { delete it[id]; if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
+      Object.keys(on).forEach(function (id) { if (!it[id] && S.habit(id) && !S.habit(id).archived) { it[id] = {}; add++; } });
+      S.putTab(t); closeSheet(function () { App.render(); if (add) App.toast('Added ' + add + ' to ' + t.name); });
+    },
+    tgTog: function (el) { var i = document.getElementById('spTg'); i.classList.toggle('on'); var on = i.classList.contains('on'); el.setAttribute('aria-pressed', on); document.getElementById('spBox').classList.toggle('tgoff', !on); },
     edit: function (el) {
       var id = el.dataset.id, h = S.habit(id);
       if (ctxGrp(h)) return;
@@ -1917,7 +2017,7 @@
     selMore: function () {
       var g = Object.keys(sel).some(function (id) { var h = S.habit(id); return h && isGroup(h); });
       showSheet('selmore', '<button class="mi" data-act="selColor">Change colour</button>' +
-        '<button class="mi" data-act="selTab">Move to tab</button>' +
+        '<button class="mi" data-act="sprAddOpen">Add to tab…</button>' +
         (selIn().length ? '<button class="mi" data-act="selIntoAsk">Put into a group…</button>' : '') +
         (selOut().length ? '<button class="mi" data-act="selOut">Take out of group</button>' : '') +
         (g ? '<button class="mi" data-act="selFold">Fold / unfold group</button>' : ''), 'menu');
@@ -1954,25 +2054,8 @@
       ids.forEach(function (id) { S.putHabit(S.habit(id)); });
       closeSheet(function () { selEnd(function () { App.toast('Moved ' + ids.length + ' out of the group'); }); });
     },
-    selTab: function () { closeSheet(openMoveToTab); },
-    moveTo: function (el) {
-      var ids = Object.keys(sel), tid = el.dataset.tab || null, n = 0, skipped = 0;
-      ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (h.parent && S.habit(h.parent)) { skipped++; return; } h.tab = tid; S.putHabit(h); n++; });
-      var t = S.tab(tid);
-      closeSheet(function () { selEnd(function () { App.toast((n ? 'Moved ' + n + (t ? ' to ' + t.name : ' out of tabs') : '') + (skipped ? (n ? ' · ' : '') + 'sub-habits follow their group' : '')); }); });
-    },
-    moveToNew: function () {
-      closeSheet(function () {
-        showSheet('tabname', '<h3>New tab</h3><input id="tabIn" placeholder="Tab name" maxlength="30" autocomplete="off"><div class="row end"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="tabSave">Create &amp; move</button></div>', 'attop');
-        var inp = document.getElementById('tabIn'); inp.focus();
-        App._tab = function () {
-          var name = inp.value.trim(); if (!name) return App.toast('Give the tab a name');
-          var t = S.putTab({ name: name }); actions.moveTo({ dataset: { tab: t.id } });
-        };
-      });
-    },
     secFold: function (el) { var F = S.d.ui.secFold = S.d.ui.secFold || {}, id = el.getAttribute('data-sec'); if (F[id]) delete F[id]; else F[id] = 1; S.saveUi(); App.render(); },
-    home: function () { if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.home(); }); var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
+    home: function () { if (thQuiet) { thQuiet = false; return; } if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.home(); }); var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { ribGo('star'); },
     doneToggle: function () { ribGo('done'); },
     viewArch: function () { toggleView('arch'); },
@@ -1987,17 +2070,16 @@
     flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
     tpDone: function () { closeTp(); },
-    tpRename: function () { var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be renamed'); if (isSpr(t)) return openSprEdit(t); askTabName(t); },
+    tpRename: function () { var t = S.tab(tp.id); if (!t) return; openTabEdit(t); },
     tpArchive: function () {
-      var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be archived');
+      var t = S.tab(tp.id); if (!t) return;
       t.hidden = !t.hidden; S.putTab(t);
-      if (t.hidden && !S.d.ui.showArchTabs) { tp.id = 'all'; if (view() === 'all') S.d.ui.view = 'all'; }
+      if (t.hidden && !S.d.ui.showArchTabs) { if (S.d.ui.view === t.id) S.d.ui.view = 'all'; closeTp(); }
       App.render(); App.toast(t.hidden ? 'Archived “' + t.name + '”' + (S.d.ui.showArchTabs ? '' : ' — flip “Archived” to see it') : '“' + t.name + '” is back');
     },
     tpDelete: function () {
-      var t = S.tab(tp.id); if (!t) return App.toast('Main can’t be deleted');
-      var n = tabAll(t.id); if (n) return App.toast('Only an empty tab can be deleted — it has ' + n + ' habit' + (n > 1 ? 's' : '') + ' (archived count)');
-      confirmBox('Delete tab “' + t.name + '”?', 'Delete', function () { S.delTab(t.id); tp.id = 'all'; App.render(); App.toast('Tab deleted'); });
+      var t = S.tab(tp.id); if (!t) return;
+      confirmBox('Delete tab “' + t.name + '”? Its habits stay on Home.', 'Delete', function () { S.delTab(t.id); if (S.d.ui.view === t.id) S.d.ui.view = 'all'; closeTp(); App.render(); App.toast('Tab deleted'); });
     },
     tpArchShow: function () { S.d.ui.showArchTabs = !S.d.ui.showArchTabs; S.saveUi(); App.render(); },
     goTab: function (el) {
@@ -2006,20 +2088,20 @@
       var id = el.dataset.tab, go = function () { setView(id); };
       if (sheetOpen) closeSheet(go); else go();
     },
-    newTab: function () { if (sheetOpen) closeSheet(function () { askTabName(null); }); else askTabName(null); },
+    newTab: function () { if (sheetOpen) closeSheet(function () { openTabEdit(null); }); else openTabEdit(null); },
     tabSave: function () { App._tab(); },
     hiddenTabs: function () { closeSheet(openHiddenTabs); },
     tabActs: function (el) { if (thQuiet) { thQuiet = false; return; } var id = el.dataset.tab; closeSheet(function () { openTabActs(id); }); },
-    tabRename: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { askTabName(t); }); },
+    tabRename: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { openTabEdit(t); }); },
     tabHide: function (el) {
       var t = S.tab(el.dataset.tab), hide = !t.hidden;
       closeSheet(function () { t.hidden = hide; S.putTab(t); App.render(); App.toast(hide ? 'Tab archived — find it in Settings → Archived tabs' : 'Tab “' + t.name + '” is back'); });
     },
     tabMove: function (el) { var id = el.dataset.tab, d = +el.dataset.d; closeSheet(function () { S.moveTab(id, d); App.render(); openTabActs(id); }); },
     tabDel: function (el) {
-      var t = S.tab(el.dataset.tab); if (tabAll(t.id)) return App.toast('Only an empty tab can be deleted');
+      var t = S.tab(el.dataset.tab);
       closeSheet(function () {
-        confirmBox('Delete tab “' + t.name + '”?', 'Delete', function () { S.delTab(t.id); App.render(); App.toast('Tab deleted'); });
+        confirmBox('Delete tab “' + t.name + '”? Its habits stay on Home.', 'Delete', function () { S.delTab(t.id); if (S.d.ui.view === t.id) S.d.ui.view = 'all'; App.render(); App.toast('Tab deleted'); });
       });
     },
     selEdit: function () { var id = Object.keys(sel)[0]; selEnd(function () { openEdit(id); }); },
@@ -2069,7 +2151,12 @@
       else if (f === 'wp') h.freq.wp = h.freq.wp === false;
       else if (f === 'miss') { h.miss = h.miss || { keep: null }; h.miss.t = v; }
       else if (f === 'enf') h.enf = !h.enf;
-      else if (f === 'tab') h.tab = v || null;
+      else if (f === 'tabIn') { var ti = h._tabs.indexOf(v); if (ti >= 0) h._tabs.splice(ti, 1); else h._tabs.push(v); }
+      else if (f === 'pcol') { if (v) h._pk.col = v; else delete h._pk.col; }
+      else if (f === 'phid') { if (v === '') delete h._pk.hid; else h._pk.hid = v === '1'; }
+      else if (f === 'psolo') h._pk.solo = v === '1';
+      else if (f === 'pwin') { if (v) h._pk.win = h._pk.win || { from: '', to: '' }; else delete h._pk.win; }
+      else if (f === 'prm') h._prm = !h._prm;
       else if (f === 'link') { h.link = v || null; if (!v) delete h.hzr; }
       else if (f === 'hzOp') h.hzr.op = v;
       else if (f === 'hzAdd') h.hzr.c.push({ m: h.hzr.c.some(function (q) { return q.m === 'tl' || q.m === 'ts'; }) ? 'pg' : 'tl', n: 1 });
@@ -2098,7 +2185,8 @@
       if (sw && h.type === 'num' && h._tick == null) return App.toast('Enter what each past tick becomes');
       var tick = h._tick;
       var back = h._from === 'stats';
-      var nspr = h._spr; delete h._new; delete h._ttSet; delete h._tick; delete h._from; delete h._spr;
+      var pv = h._pv, pk = h._pk, prm = h._prm, tabs = h._tabs || [];
+      delete h._new; delete h._ttSet; delete h._tick; delete h._from; delete h._pv; delete h._pk; delete h._prm; delete h._tabs;
       var done = function () {
         if (sw) S.switchType(h, h.type, tick);
         var op = o ? o.parent || null : null, np = h.parent || null;
@@ -2109,7 +2197,15 @@
           order.splice(at, 0, h.id); S.reorder(order);
           if (np && folded(np)) { S.d.ui.fx = S.d.ui.fx || {}; S.d.ui.fx[np] = false; S.saveUi(); }
         }
-        S.putHabit(h); if (nspr && S.tab(nspr)) sprAdd(S.tab(nspr), [h.id], true); if (h.link) fillHifz(false); App.render();
+        if (prm && pv === 'star') h.star = false;
+        S.putHabit(h);
+        if (prm && pv !== 'star') tabs = tabs.filter(function (id) { return id !== pv; });
+        S.tabs().forEach(function (t) { var want = tabs.indexOf(t.id) >= 0; if (want !== !!(t.items || {})[h.id]) pickSet(t, [h.id], want); });   // v5.34 "In tabs"
+        if (pv && !prm && (pv === 'star' || S.tab(pv))) {   // this list's own settings
+          var m = pkMap(pv); if (pk.win && !pk.win.from && !pk.win.to) delete pk.win;
+          m[h.id] = pk; if (pv === 'star') S.saveSettings(); else S.putTab(S.tab(pv));
+        }
+        if (h.link) fillHifz(false); App.render();
         var rr = rep(h);
         if (sw) App.toast('Type changed · ' + sw + ' day' + (sw === 1 ? '' : 's') + ' converted');
         else if (rr && !rr.show && !SH().rest) App.toast('Saved · not due today' + (rr.next != null ? ' — next on ' + dayTxt(rr.next) : ''));
@@ -2135,30 +2231,56 @@
     sprAddOpen: function () { openAddSpr(); },
     sprTog: function (el) {
       var t = S.tab(el.dataset.tab), ids = Object.keys(sel || {}); if (!t) return;
-      var on = !ids.every(function (id) { return (t.sprint.items || {})[id]; }); sprAdd(t, ids, on);
-      closeSheet(function () { selEnd(function () { App.toast((on ? 'Added to “' : 'Removed from “') + t.name + '”'); }); });
+      var on = !ids.every(function (id) { return (t.items || {})[id]; }), arch = ids.some(function (id) { return (S.habit(id) || {}).archived; }); pickSet(t, ids, on);
+      closeSheet(function () { selEnd(function () { App.toast((on ? 'Added to “' : 'Removed from “') + t.name + '”' + (on && arch ? ' · archived ones skipped' : '')); }); });
     },
     sprNew: function () { var ids = sel ? Object.keys(sel) : [], go = function () { openSprEdit(null, ids); }; closeSheet(function () { if (sel) selEnd(go); else go(); }); },
     sprEditOpen: function (el) { var t = S.tab(el.dataset.tab); if (!t) return; if (sheetOpen) closeSheet(function () { openSprEdit(t); }); else openSprEdit(t); },
     sprStatsId: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { openSprStats(t); }); },
     sprList: function () { closeSheet(openSprList); },
     sprCol: function (el) { var i = document.getElementById('spCol'); i.classList.toggle('on'); el.setAttribute('aria-pressed', i.classList.contains('on')); },
-    sprRm: function (el) { var o = App._spr; sprRead(); delete o.its[el.dataset.id]; var e = el.closest('.spe'); if (e) e.remove(); },
+    sprRm: function (el) { var o = App._spr, id = el.dataset.id; sprRead(); delete o.its[id]; o.ids = o.ids.filter(function (x) { return x !== id; }); var e = el.closest('.spe'); if (e) e.remove(); },
     sprAgain: function () { var t = App._spr.t; closeSheet(function () { openSprEdit(null, null, t); }); },
     sprAgainId: function (el) { var t = S.tab(el.dataset.tab); closeSheet(function () { openSprEdit(null, null, t); }); },
-    sprSave: function () {
+    sprSave: function () {   // v5.34 tab edit page
       var o = App._spr, v = sprRead();
-      if (!v.name) return App.toast('Give the sprint a name');
-      if (!v.from || !v.to || v.to < v.from) return App.toast('Pick an end date on or after the start');
-      var sp = { from: v.from, to: v.to, color: v.color, items: o.its };
+      if (!v.name) return App.toast('Give the tab a name');
+      if (v.from && v.to && v.to < v.from) return App.toast('Pick an end date on or after the start');
+      if (v.tg && (!v.from || !v.to)) return App.toast('Targets need both dates');
+      var its = {}; o.ids.forEach(function (id) { if (o.its[id]) its[id] = o.its[id]; });
       closeSheet(function () {
-        if (o.t) { o.t.name = v.name; o.t.short = v.short; o.t.sprint = sp; S.putTab(o.t); App.render(); App.toast('Sprint saved'); }
-        else { var nt = S.putTab({ name: v.name, short: v.short, sprint: sp }); if (tabsMode() === 'off') App.render(); else setView(nt.id); App.toast('Sprint “' + v.name + '” created'); }
+        var t = o.t || { items: {} }, old = t.items || {}, it = {};
+        o.ids.forEach(function (id) { it[id] = old[id] || {}; });
+        t.name = v.name; t.short = v.short; t.from = v.from || null; t.to = v.to || null; t.items = it;
+        if (v.tg) t.sprint = { from: v.from, to: v.to, color: v.color, items: its }; else delete t.sprint;
+        var nt = S.putTab(t);
+        if (o.t) { App.render(); App.toast('Tab saved'); } else { setView(nt.id); App.toast('Tab “' + v.name + '” created' + (o.ids.length ? '' : ' — tap + to pick habits')); }
       });
     },
-    overview: function () { var spt = sprOf(view()); if (spt) { if (sheetOpen === 'sprst') return closeSheet(); return sheetOpen ? closeSheet(function () { openSprStats(spt); }) : openSprStats(spt); }
+    overview: function () { var spt = sprOf(view()), f = S.d.ui.ovF || '';
+      if (!spt && isTabV(view())) S.d.ui.ovF = 'tab:' + view(); else if (f.indexOf('tab:') === 0) S.d.ui.ovF = null;   // v5.34: Stats from a tab = that tab's habits
+      S.saveUi(); if (spt) { if (sheetOpen === 'sprst') return closeSheet(); return sheetOpen ? closeSheet(function () { openSprStats(spt); }) : openSprStats(spt); }
       if (sheetOpen === 'ov') return closeSheet(); ovFrom = false; if (sheetOpen) closeSheet(openOverview); else openOverview(); },
     ovRange: function (el) { ovR = +el.dataset.v; openOverview(true); },
+    ovF: function (el) { if (thQuiet) { thQuiet = false; return; } S.d.ui.ovF = el.dataset.v || null; S.saveUi(); openOverview(true); },
+    fltNew: function () { openFilterEdit(null); },
+    fltTog: function (el) { fltRead(); var on = App._flt.on, id = el.dataset.id; if (on[id]) delete on[id]; else on[id] = 1; drawFilter(); },
+    fltSave: function () {
+      fltRead(); var o = App._flt, on = o.on;
+      if (!o.name) return App.toast('Give the filter a name');
+      if (!o.from) return App.toast('Pick a start date');
+      if (o.to && o.to < o.from) return App.toast('End date must be on or after the start');
+      var ids = Object.keys(on).filter(function (id) { var h = S.habit(id); return h && !(h.parent && on[h.parent]); });
+      if (!ids.length) return App.toast('Pick at least one habit');
+      var fl = S.d.settings.sfil = S.d.settings.sfil || [], x = fl.filter(function (q) { return q.id === o.id; })[0];
+      if (!x) { x = { id: S.id() }; fl.push(x); }
+      x.name = o.name; x.from = o.from; x.to = o.to || null; x.ids = ids;
+      S.saveSettings(); S.d.ui.ovF = x.id; S.saveUi(); openOverview();
+    },
+    fltDel: function () {
+      var id = App._flt.id; S.d.settings.sfil = (S.d.settings.sfil || []).filter(function (q) { return q.id !== id; });
+      S.saveSettings(); S.d.ui.ovF = null; S.saveUi(); openOverview();
+    },
     ovOpen: function (el) { ovFrom = sheetOpen === 'sprst' ? 'spr' : true; openStats(el.dataset.id); },
     settings: function () { closeSheet(openSettings); },
     demoOn: function () { setDemo(true); },
@@ -2211,7 +2333,7 @@
       S.d.settings.heightCm = h > 0 ? Math.round(h * 10) / 10 : null; S.d.settings.wTarget = t > 0 ? Math.round(t * 100) / 100 : null;
       S.saveSettings(); wBack();
     },
-    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'blog' || sheetOpen === 'bfin') return openStats(stId, true); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
+    close: function () { if (sheetOpen === 'pt') return openSettings(); if (sheetOpen === 'flt') return openOverview(); if (sheetOpen === 'stats' && ovFrom) { var fs = ovFrom; ovFrom = false; return fs === 'spr' && S.tab(App._sprSt) ? openSprStats(S.tab(App._sprSt)) : openOverview(); } if (sheetOpen === 'wlog' || sheetOpen === 'wset') return wBack(); if (sheetOpen === 'blog' || sheetOpen === 'bfin') return openStats(stId, true); if (sheetOpen === 'edit' && draft && draft._from === 'stats' && S.habit(draft.id)) return openStats(draft.id, true); closeSheet(); },
     statEdit: function () { openEdit(stId); },
     bookEnd: function (el) {   // finished (or switching): open Edit for the next run; the old run goes into the history on Save
       var h = S.habit(stId); if (!bookOn(h)) return;
@@ -2254,6 +2376,7 @@
   document.addEventListener('change', function (e) {
     var a = e.target.dataset && e.target.dataset.act;
     if (a === 'edgeKind') { readInputs(); var y = sheet.scrollTop; drawEdit(); sheet.scrollTop = y; }
+    if (a === 'fltTab') { fltRead(); var ft = S.tab(e.target.value); App._flt.ft = e.target.value; if (ft) { App._flt.on = {}; Object.keys(ft.items || {}).forEach(function (q) { App._flt.on[q] = 1; }); if (!App._flt.name) App._flt.name = ft.name; if (ft.from) { App._flt.from = ft.from; App._flt.to = ft.to || ''; } } drawFilter(); }
     else if (a === 'ptCity') ptFill(e.target.value);
     else if (a === 'ptMethod') ptPreview();
   });

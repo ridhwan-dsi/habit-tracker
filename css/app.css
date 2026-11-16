@@ -457,3 +457,15 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .hzr { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
 .hzc { display:flex; align-items:center; gap:6px; } .hzc .sel { flex:1; min-width:0; } .hzc input { width:64px; text-align:center; } .hzc em { font-style:normal; font-size:12px; color:var(--muted); width:24px; } .hzc span { color:var(--muted); }
 .hzr .btn.sm { align-self:flex-start; }
+/* v5.34 tabs as filters: picker, tab edit Targets switch, Edit "In <tab>" section, Stats filter chips */
+.pkr.pks { padding-left:44px; }
+.pkr[disabled] { opacity:.6; }
+.tgoff .tgx, .tgoff .spef { display:none; }
+.pkf { background:var(--card2); border-radius:14px; padding:12px 14px 4px; margin:0 0 14px; }
+.pkf h4 { margin:0 0 6px; } .pkf .pkh { margin:14px 0 6px; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-weight:500; font-size:13px; }
+.pkf p { margin:4px 0 10px; }
+.dot.same { color:#fff; font-weight:700; font-size:14px; display:inline-flex; align-items:center; justify-content:center; }
+.trow2 { display:flex; align-items:center; gap:8px; } .trow2 .mi { flex:1; }
+.ovf { margin:0 0 6px; } .ovfl { margin:0 0 10px; }
+.mi.trow span > .i { width:18px; height:18px; vertical-align:-3px; margin-right:4px; }
+.pkf .fl { margin-bottom:10px; }

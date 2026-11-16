@@ -17,7 +17,7 @@
      step: null,                    // v4 measurable: default value & +/- step (blank = 1)
      archived: false }
    entries['<habitId>|YYYY-MM-DD'] = { v: number|null, s: 0|1 (skip, v6), u }
-   tabs[id] = { id, u, name, short, order, hidden }   (v4; short name v5.5). No tab = the Main tab.
+   tabs[id] = { id, u, name, short, order, hidden, items, ord, from, to, sprint? }   (v5.34: tabs are filters over Home — see tabsFix)
    weights['YYYY-MM-DD'] = { v: kg|null, u }   (SL 34); settings.heightCm, settings.wTarget */
 (function () {
   var REAL = 'habits.v1', DEMO = 'habits.demo', MODE = 'habits.mode', SCHEMA = 1, KEY = REAL;   // demo data has its own key
@@ -55,8 +55,29 @@
       Object.keys(b).forEach(function (k) { if (d[k] == null) d[k] = b[k]; });
       Object.keys(b.settings).forEach(function (k) { if (d.settings[k] == null) d.settings[k] = b.settings[k]; });
       if (d.settings.tabsMode === 'ribbon') d.settings.tabsMode = 'bottom';   // v5.5: the Tabs sheet became a tab strip above the bottom bar
+      if (d.settings.tabsMode === 'off') { d.settings.tabsMode = 'bottom'; if (d.settings.show) d.settings.show.strip = false; else d.settings._noStrip = true; }   // v5.34: one-page layout dropped
+      this.tabsFix();
       // future: if (d.schema < 2) { ...reshape, never delete... }
       d.schema = SCHEMA;
+    },
+    /* v5.34 Tabs are filters over the one Home list: a tab owns no habits. t.items = { habitId: overrides } picks habits or
+       whole groups from Home (overrides: col, hid true/false, solo for a sub-habit on its own, win {from,to}); t.ord = own order;
+       t.from / t.to = optional dates; t.sprint = optional targets (old sprint tabs). Old tabs: their habits (h.tab) become picks.
+       Idempotent, so it also cleans data merged in from a phone still on an older version. */
+    tabsFix: function () {
+      var d = this.d, now = Date.now(), T = d.tabs || {};
+      Object.keys(T).forEach(function (id) {
+        var t = T[id]; if (!t || t.d) return;
+        if (!t.items) {
+          t.items = {}; t.u = now;
+          if (t.sprint) { Object.keys(t.sprint.items || {}).forEach(function (h) { t.items[h] = {}; }); t.from = t.sprint.from; t.to = t.sprint.to; }
+        }
+      });
+      Object.keys(d.habits || {}).forEach(function (id) {
+        var h = d.habits[id]; if (!h || h.d || !h.tab) return;
+        var t = T[h.tab]; if (t && !t.d && !h.parent) { if (!t.items[id]) t.items[id] = {}; t.u = now; }
+        h.tab = null; h.u = now;
+      });
     },
     reset: function (acct) { this.d = blank(); this.d.acct = acct; this.persist(); },
     persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } this.flag(); },
@@ -120,7 +141,7 @@
       var a = vis[i], b = vis[j], o = a.order, now = Date.now(); a.order = b.order; b.order = o; a.u = b.u = now;
       this.save(); return true;
     },
-    delTab: function (id) {   // its habits stay, with no tab
+    delTab: function (id) {   // v5.34: a tab only holds picks — its habits stay on Home
       var now = Date.now();
       this.habits().forEach(function (h) { if (h.tab === id) { h.tab = null; h.u = now; } });
       this.d.tabs[id] = { id: id, d: 1, u: now };
