@@ -354,6 +354,8 @@
     }
     return '<div class="' + cls + '" data-h="' + h.id + '" data-k="' + d.k + '">' + inner + '</div>';
   }
+  // v5.33: ticks and met numbers take the habit's colour (row sets --hc); later a tab can override it
+  function hc(h) { return h.color || '#5BC48A'; }
   function anyCell(h, d) { return isGroup(h) ? groupCell(h, d) : cellHtml(h, d); }
   /* Fold modes (bottom bar): 'open' all expanded, 'shut' all collapsed, 'man' each group's own default (h.fold0, set in Edit).
      Tapping a group overrides it until the mode changes (ui.fx). In 'shut', opening one group closes the others. */
@@ -696,10 +698,10 @@
       var rowHtml = function (h, cls, grp) {
         var wt = SH().times !== false && winOwn(h) && winTxt(h), cx = grp && ctxGrp(h), sl = spT && sprLine(spT, h), scol = sl && spT.sprint.color !== false && sl.cls !== 'n' ? SPC[sl.cls] : null;
         if (cx) { grp = false; cls += ' ctx'; }
-        return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '">' +
+        return '<div class="hrow' + cls + (sel && sel[h.id] ? ' sel' : '') + (h.archived ? ' arch' : '') + (scol ? ' spx sp' + sl.cls + 'x' : '') + '" data-row="' + h.id + '" style="--hc:' + esc(hc(h)) + '">' +
           '<div class="nm" data-act="edit" data-id="' + h.id + '"><div class="nmi">' +
           (grp ? '<svg class="chev' + (folded(h.id) ? '' : ' open') + '" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>' : cls.indexOf(' sub') < 0 ? '<i class="chev"></i>' : '') +
-          '<span class="hx" style="color:' + esc(scol || h.color) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="sbt">' + esc(h.book.title) + (h.book.au ? ' — ' + esc(h.book.au) : '') + '</small>' : '') + qTxt(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
+          '<span class="hx" style="color:' + esc(scol || hc(h)) + '"><b class="hn">' + esc(h.name) + dueTag(h) + '</b>' + (h.subt ? '<small class="sbt">' + esc(h.subt) + '</small>' : '') + (bookOn(h) && h.book.showT && h.book.title ? '<small class="sbt">' + esc(h.book.title) + (h.book.au ? ' — ' + esc(h.book.au) : '') + '</small>' : '') + qTxt(h) + (wt ? '<small class="wt">' + esc(wt) + '</small>' : '') + (sl ? sl.html : '') + '</span>' +
           (h.star && v !== 'star' ? '<svg class="st" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>' : '') +
           (grp && folded(h.id) ? '<em>' + liveSubs(h.id).length + '</em>' : '') + '</div></div>' +
           days.map(function (d) { return anyCell(h, d); }).join('') + '</div>';

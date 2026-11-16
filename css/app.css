@@ -36,11 +36,11 @@ body { height:100dvh; overflow:hidden; padding:env(safe-area-inset-top) env(safe
 .c.press { background:var(--line); }
 .c .tk, .c .xx { width:20px; height:20px; fill:none; stroke-linecap:round; stroke-linejoin:round; }
 .c .xx { stroke:var(--dim); stroke-width:1.8; width:15px; height:15px; }
-.c .tk { stroke:var(--pri); stroke-width:2.6; }
-.c.bad .tk { stroke:var(--bad); }
+.c .tk { stroke:var(--hc, var(--pri)); stroke-width:2.6; }
+.c.bad .tk { stroke:var(--hc, var(--bad)); }
 .c b { font-size:14px; font-weight:600; color:var(--dim); line-height:1.1; }
 .c i { font-style:normal; font-size:9.5px; color:var(--dim); max-width:44px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.c.ok b, .c.ok i { color:var(--pri); }
+.c.ok b, .c.ok i { color:var(--hc, var(--pri)); }
 .c.part b { color:var(--part); }
 .c.nb b { color:var(--part); }
 .c.bad b, .c.bad i { color:var(--bad); }
