@@ -469,3 +469,14 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .ovf { margin:0 0 6px; } .ovfl { margin:0 0 10px; }
 .mi.trow span > .i { width:18px; height:18px; vertical-align:-3px; margin-right:4px; }
 .pkf .fl { margin-bottom:10px; }
+/* v5.35 Home hold: tabs side by side; Show drawer Mine/All switch and short-list dividers */
+.gogrid { display:flex; flex-wrap:wrap; gap:8px; padding:4px 0 8px; }
+.gch { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:18px; background:var(--card); border:1px solid var(--line); color:var(--ink); font-size:14px; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; max-width:100%; }
+.gch b { font-weight:500; display:inline-flex; align-items:center; gap:6px; } .gch .i { width:16px; height:16px; }
+.gch small { color:var(--muted); font-size:11px; } .gch i { font-style:normal; font-size:11px; color:var(--muted); }
+.gch.on { border-color:var(--pri); color:var(--pri); } .gch.on b { font-weight:600; }
+.gogrid.sm .gch { padding:6px 12px; font-size:13px; background:none; } .gch.add, .gch.mut { color:var(--muted); }
+.shm { display:inline-flex; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.shm button { padding:3px 10px; font-size:12px; color:var(--muted); background:none; border:0; }
+.shm button.on { background:var(--pri); color:var(--pri-ink); font-weight:600; }
+hr.shl { border:0; border-top:1px solid var(--line); margin:4px 18px; }

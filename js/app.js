@@ -47,6 +47,7 @@
     eye: '<svg class="i" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     eyeOff: '<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6a9.8 9.8 0 011.4-.1c6 0 9.5 6.1 9.5 6.1a16 16 0 01-2.6 3.3M6.2 6.9A16.7 16.7 0 002.5 12s3.5 6.5 9.5 6.5a9 9 0 004.6-1.3M9.9 10a3 3 0 004.1 4.1"/></svg>',
     cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    tabI: '<svg class="i" viewBox="0 0 24 24"><path d="M3 19V8a1 1 0 0 1 1-1h5l2-3h4l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 10h18"/></svg>',
     flag: '<svg class="i" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
     clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
@@ -700,15 +701,15 @@
     SHOW.forEach(function (x) {
       var k = x[0]; if (k === 'skip' && !f.skipDays) return;
       if (!full && pin.indexOf(k) < 0) return;
-      if (full && x[1] !== g) { g = x[1]; h += '<div class="shg">' + g + '</div>'; }
+      if (x[1] !== g) { if (full) h += '<div class="shg">' + x[1] + '</div>'; else if (g) h += '<hr class="shl">'; g = x[1]; }   // v5.35: short list = a thin line between kinds
       var p = pin.indexOf(k) >= 0, ct = SHOW_LOOK[k] ? '<em class="shc"></em>' : '<em class="shc">' + (n[k] || 0) + '</em>';
       h += shwEdit
         ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '</button>'
         : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
     });
     if (!h) h = '<p class="small muted shn">Tap the pen to pick the switches you want here.</p>';
-    var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : 'What’s on your list') + '</b>' +
-      (shwEdit ? '' : '<a href="#" data-act="shwFull">' + (u.showFull ? 'Short' : 'See all') + '</a>') +
+    var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : 'On your list') + '</b>' +
+      (shwEdit ? '' : '<span class="shm"><button data-act="shwFull" data-m="0" class="' + (u.showFull ? '' : 'on') + '">Mine</button><button data-act="shwFull" data-m="1" class="' + (u.showFull ? 'on' : '') + '">All</button></span>') +
       '<button class="dtl" data-act="shwDesc" aria-pressed="' + dsc + '"><i class="tgl' + (dsc ? ' on' : '') + '"></i>Notes</button>' +
       '<button class="ib' + (shwEdit ? ' lit' : '') + '" data-act="shwPen" aria-label="' + (shwEdit ? 'Done' : 'Choose short list') + '">' + (shwEdit ? ICON.check : ICON.pen) + '</button></div>' +
       '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.tuck ? n.tuck + ' tucked away' : 'Everything showing') + '</div>' + h +
@@ -771,7 +772,7 @@
         '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
         (S.d.settings.skipDays ? '<button class="ib' + (allSkipped() ? ' lit' : '') + '" data-act="selSkip" aria-label="' + (allSkipped() ? 'Unskip today' : 'Skip today') + '"' + (n ? '' : ' disabled') + '>' + ICON.skip + '</button>' : '') +
         '<button class="ib" data-act="sprAddOpen" aria-label="Add to tab"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>' +
-        '<button class="ib" data-act="selHide" aria-label=""' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
+        '<button class="ib" data-act="selHide" aria-label="' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
         '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
         '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
@@ -783,7 +784,7 @@
       var rb = function (act, icon, label, on, extra) { return '<button class="rbtn' + (on ? ' on' : '') + '" data-act="' + act + '" aria-label="' + label + '">' + icon + '<span>' + label + '</span>' + (extra || '') + '</button>'; };
       var ribbon = (mode === 'bottom' && !sel && sOn ? tpan + '<div class="bstrip">' + chips + '</div>' : '') + '<nav class="rib">' +
         rb('starToggle', v === 'star' ? ICON.starOn : ICON.star, 'Starred', v === 'star') +
-        rb('home', ICON.home, 'Home', v === 'all').replace('<button ', '<button data-hold="home" ') +   // v5.34: tap = Home, hold = list of tabs
+        (isTabV(v) ? rb('home', ICON.tabI, 'Tab', true) : rb('home', ICON.home, 'Home', v === 'all')).replace('<button ', '<button data-hold="home" ') +   // v5.34: tap = Home, hold = list of tabs
         rb('doneToggle', ICON.doneDay, 'Done', v === 'done') +
         rb('shw', ICON.eye, 'Show', sheetOpen === 'show', shc.tuck ? '<i class="bdg hid">' + shc.tuck + '</i>' : '') +
         (mode === 'top' ? rb('add', ICON.plus, 'Add', false) : '') +
@@ -862,7 +863,7 @@
   function selOut() { return sel ? S.habits().filter(function (h) { return sel[h.id] && h.parent && S.habit(h.parent); }).map(function (h) { return h.id; }) : []; }
   // v5.18: a Hidden (still active) habit with history must be archived before it can be deleted
   function lockedDel(id) { var h = S.habit(id); if (!h || h.archived || !h.hid) return false; return S.countEntries(id) > 0 || subs(id).some(function (x) { return !x.archived && S.countEntries(x.id) > 0; }); }
-  function allHidden() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && h.hid; }); }
+  function allHidden() { var ids = sel ? Object.keys(sel) : []; return ids.length > 0 && ids.every(function (id) { var h = S.habit(id); return h && hidOf(h); }); }
   // v5.20: Skip today for many at once from the select bar. A group stands for its live sub-habits; habits already done today are left alone.
   function skipTargets() { var o = []; Object.keys(sel || {}).forEach(function (id) { var h = S.habit(id); if (!h) return; (isGroup(h) ? liveSubs(id) : [h]).forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); }); return o; }
   function allSkipped() { var t = S.today(), o = skipTargets(); return o.length > 0 && o.every(function (h) { return S.skipped(h.id, t); }); }
@@ -1865,16 +1866,16 @@
   // v5.34 hold Home on the bottom bar: every tab to jump to (works with the strip hidden); not-yet-started ones show their start
   function openTabsSheet() {
     var v = view(), hid = S.tabs().filter(function (t) { return t.hidden; }), end = S.tabs().filter(function (t) { return !t.hidden && tPhase(t) === 'end'; });
-    showSheet('tabs', '<h3>Go to</h3>' +
-      '<button class="mi trow' + (v === 'all' ? ' on' : '') + '" data-act="goTab" data-tab="all"><span>' + ICON.home + ' Home</span></button>' +
-      visTabs().filter(function (t) { return tPhase(t) !== 'end'; }).map(function (t) {
-        var hd = tPhase(t) === 'pre' ? sprHead(t) : '';
-        return '<button class="mi trow' + (v === t.id ? ' on' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-hold="' + t.id + '"><span>' + esc(t.name) + (hd ? '<small class="muted" style="display:block">' + esc(hd) + '</small>' : '') + '</span><small>' + tabN(t) + '</small></button>';
-      }).join('') +
-      '<button class="mi trow add" data-act="newTab">' + ICON.plus + '<span>New tab</span></button>' +
-      (end.length ? '<button class="mi trow muted" data-act="sprList"><span>Ended tabs</span><small>' + end.length + '</small></button>' : '') +
-      (hid.length ? '<button class="mi trow muted" data-act="hiddenTabs"><span>Archived tabs</span><small>' + hid.length + '</small></button>' : '') +
-      '<p class="small muted hint">Hold a tab to edit, archive, move or delete it.</p>');
+    // v5.35: chips side by side (Home first, then his tabs), extras in a smaller row below
+    var chip = function (id, label, sub, n) { return '<button class="gch' + (v === id ? ' on' : '') + '" data-act="goTab" data-tab="' + id + '"' + (id === 'all' ? '' : ' data-hold="' + id + '"') + '><b>' + label + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + (n != null ? '<i>' + n + '</i>' : '') + '</button>'; };
+    showSheet('tabs', '<h3>Go to</h3><div class="gogrid">' +
+      chip('all', ICON.home + ' Home', '', null) +
+      visTabs().filter(function (t) { return tPhase(t) !== 'end'; }).map(function (t) { return chip(t.id, esc(t.name), tPhase(t) === 'pre' ? sprHead(t) : '', tabN(t)); }).join('') +
+      '</div><div class="gogrid sm">' +
+      '<button class="gch add" data-act="newTab">' + ICON.plus + ' New tab</button>' +
+      (end.length ? '<button class="gch mut" data-act="sprList">Ended <i>' + end.length + '</i></button>' : '') +
+      (hid.length ? '<button class="gch mut" data-act="hiddenTabs">Archived <i>' + hid.length + '</i></button>' : '') +
+      '</div><p class="small muted hint">Hold a tab to edit, archive, move or delete it.</p>');
   }
   function openHiddenTabs() {
     var hid = S.tabs().filter(function (t) { return t.hidden; });
@@ -1998,7 +1999,9 @@
     selDone: function () { selEnd(); },
     selHide: function () {
       var ids = Object.keys(sel), on = !allHidden();
-      ids.forEach(function (id) { var h = S.habit(id); if (h) { h.hid = on; S.putHabit(h); } });
+      var v = view(), pm = (v === 'star' || isTabV(v)) && pkMap(v), tch = false;
+      ids.forEach(function (id) { var h = S.habit(id); if (!h) return; h.hid = on; S.putHabit(h); if (pm && pm[id] && pm[id].hid != null) { delete pm[id].hid; tch = true; } });   // v5.35: a list's own Shown/Hidden no longer overrides the bar's Hide
+      if (tch) { if (v === 'star') S.saveSettings(); else S.putTab(S.tab(v)); }
       selEnd(function () { App.toast((on ? 'Hidden ' : 'Unhidden ') + ids.length + (on && !SH().hid ? ' — the eye below shows them' : '')); });
     },
     selSkip: function () {
@@ -2062,8 +2065,8 @@
     shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
     shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
     shwDesc: function () { S.d.ui.showDesc = !(S.d.ui.showDesc === true); S.saveUi(); drawShow(); },
-    shwFull: function () { S.d.ui.showFull = !S.d.ui.showFull; S.saveUi(); drawShow(); },
-    shwPen: function () { shwEdit = !shwEdit; drawShow(); },
+    shwFull: function (el) { S.d.ui.showFull = el && el.dataset.m ? el.dataset.m === '1' : !S.d.ui.showFull; S.saveUi(); drawShow(); },
+    shwPen: function () { shwEdit = !shwEdit; if (!shwEdit) { S.d.ui.showFull = false; S.saveUi(); } drawShow(); },   // v5.35: Done shows the short list just picked
     shwPin: function (el) { var p = S.d.settings.showPin, k = el.dataset.k, i = p.indexOf(k); if (i < 0) p.push(k); else p.splice(i, 1); S.saveSettings(); drawShow(); },
     shwAll: function () { var s = SH(), st = {}; Object.keys(SHOW_DEF).forEach(function (k) { st[k] = !!s[k]; s[k] = true; }); S.d.ui.showStash = st; S.saveSettings(); S.saveUi(); App.render(); },
     shwUsual: function () { var st = S.d.ui.showStash || SHOW_DEF; S.d.settings.show = JSON.parse(JSON.stringify(st)); S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
