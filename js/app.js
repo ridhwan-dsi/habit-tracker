@@ -1958,8 +1958,8 @@
 
   var th = null, thQuiet = false;
   document.addEventListener('pointerdown', function (e) {
+    thQuiet = false;   // v5.36: any new touch starts fresh — a hold whose click never arrived no longer eats the next tap
     var el = e.target.closest('[data-hold]'); if (!el || e.button > 0) return;   // tab rows in the Tabs / Archived tabs sheets
-    thQuiet = false;
     th = { x: e.clientX, y: e.clientY, t: setTimeout(function () { th = null; thQuiet = true; if (navigator.vibrate) navigator.vibrate(20); var id = el.dataset.hold || el.dataset.tab, go = id.indexOf('f:') === 0 ? function () { openFilterEdit(id.slice(2)); } : function () { openTabActs(id); }; if (sheetOpen) closeSheet(go); else go(); }, HOLD) };
   });
   document.addEventListener('pointermove', function (e) { if (th && (Math.abs(e.clientX - th.x) > 10 || Math.abs(e.clientY - th.y) > 10)) { clearTimeout(th.t); th = null; } });
@@ -2058,7 +2058,8 @@
       closeSheet(function () { selEnd(function () { App.toast('Moved ' + ids.length + ' out of the group'); }); });
     },
     secFold: function (el) { var F = S.d.ui.secFold = S.d.ui.secFold || {}, id = el.getAttribute('data-sec'); if (F[id]) delete F[id]; else F[id] = 1; S.saveUi(); App.render(); },
-    home: function () { if (thQuiet) { thQuiet = false; return; } if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.home(); }); var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
+    home: function (el) { if (thQuiet) { thQuiet = false; return; } if (el && el.dataset && el.dataset.hold === 'home' && isTabV(view())) return App.toast('Hold to go Home or switch tab');   // v5.36: from a tab, Home needs the long press
+      if (sheetOpen && sheetOpen !== 'show') return closeSheet(function () { actions.home(); }); var sc = document.getElementById('sc'); if (view() !== 'all') setView('all'); else if (sc) sc.scrollTop = 0; sc = document.getElementById('sc'); if (sc) sc.scrollLeft = 0; },
     starToggle: function () { ribGo('star'); },
     doneToggle: function () { ribGo('done'); },
     viewArch: function () { toggleView('arch'); },
