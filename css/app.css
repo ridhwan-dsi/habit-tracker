@@ -480,3 +480,10 @@ button.srw { cursor:pointer; } button.srw:active { background:var(--line); }
 .shm button { padding:3px 10px; font-size:12px; color:var(--muted); background:none; border:0; }
 .shm button.on { background:var(--pri); color:var(--pri-ink); font-weight:600; }
 hr.shl { border:0; border-top:1px solid var(--line); margin:4px 18px; }
+
+/* v5.37 per-list Show drawer, bulk tab actions */
+.row.sb { justify-content:space-between; }
+.shv { padding:4px 18px 8px; } .shv .seg { margin-top:6px; } .shv .shg { padding:10px 0 0; }
+.shr.lk { opacity:.45; }
+.tchip.cust { position:relative; } .tchip.cust::before { content:''; position:absolute; top:5px; left:8px; width:6px; height:6px; border-radius:50%; background:var(--pri); }
+.tchip.on.cust::before { background:var(--pri-ink); }

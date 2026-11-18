@@ -78,6 +78,14 @@
         var t = T[h.tab]; if (t && !t.d && !h.parent) { if (!t.items[id]) t.items[id] = {}; t.u = now; }
         h.tab = null; h.u = now;
       });
+      Object.keys(T).forEach(function (id) {   // v5.37: picks keep their own colour, taken once from the habit (sub-habits too)
+        var t = T[id]; if (!t || t.d || !t.items || t.colSnap) return;
+        Object.keys(t.items).forEach(function (hid) {
+          var h = d.habits[hid], e = t.items[hid]; if (!h || h.d || !e) return; if (!e.col) e.col = h.color || '#5BC48A';
+          Object.keys(d.habits).forEach(function (sid) { var x = d.habits[sid]; if (x && !x.d && x.parent === hid && !t.items[sid]) t.items[sid] = { o: 1, col: x.color || e.col }; });
+        });
+        t.colSnap = 1; t.u = now;
+      });
     },
     reset: function (acct) { this.d = blank(); this.d.acct = acct; this.persist(); },
     persist: function () { try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch (e) { console.warn('save failed', e); } this.flag(); },

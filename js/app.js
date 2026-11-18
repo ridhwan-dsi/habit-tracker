@@ -49,7 +49,8 @@
     cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
     tabI: '<svg class="i" viewBox="0 0 24 24"><path d="M3 19V8a1 1 0 0 1 1-1h5l2-3h4l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 10h18"/></svg>',
     flag: '<svg class="i" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
-    clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
+    clock: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    rmTab: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8 12h8"/></svg>'
   };
   var SPC = { g: '#5DCA8A', a: '#EFB43F', r: '#EC6A6A' };
   var VIEW_NAME = { all: 'Home', star: 'Starred', arch: 'Archived', done: 'Done today' };
@@ -396,6 +397,7 @@
     return m != null ? Prayer.hm(m) : Prayer.NAMES[q[1]] + (o ? (o > 0 ? '+' : '−') + offTxt(Math.abs(o)) : '');   // the list shows today's actual time
   }
   function winOwn(h) {
+    if (noTimeV()) return 0;   // v5.37 list set to "Ignore – always show"
     var p = pick(h), w = p && p.win ? p.win : h.win || {}, f = mins(w.from), t = mins(w.to); if (f == null && t == null) return 0;
     var ext = (S.d.settings.extendH || 0) * 60, n = new Date(), m = n.getHours() * 60 + n.getMinutes();
     if (f == null) f = 0; if (t == null) t = 1440 + ext;
@@ -438,8 +440,21 @@
   function isTabV(v) { return !VIEW_NAME[v] && !!S.tab(v); }
   function pkMap(v) { if (v === 'star') return S.d.settings.starIt || (S.d.settings.starIt = {}); var t = S.tab(v); return t ? (t.items = t.items || {}) : null; }
   function pick(h, v) { var m = pkMap(v || view()); return m && m[h.id] || null; }
-  function ownIn(h, v) { return v === 'star' ? !!h.star : !!(pkMap(v) || {})[h.id]; }
-  function inTab(t, h) { var it = t.items || {}, g = h.parent && S.habit(h.parent); if (h.archived || (g && g.archived)) return false; return !!(it[h.id] || (h.parent && it[h.parent])); }
+  function ownIn(h, v) { var e = v === 'star' ? null : (pkMap(v) || {})[h.id]; return v === 'star' ? !!h.star : !!(e && !e.o); }
+  function inTab(t, h) { var it = t.items || {}, g = h.parent && S.habit(h.parent), me = it[h.id]; if (h.archived || (g && g.archived)) return false; return !!((me && !me.o) || (h.parent && it[h.parent] && !it[h.parent].o)); }
+  /* v5.37 per-list settings: a tab / Starred can follow Home's Show drawer or keep its own (c.custom, c.s, c.noTime).
+     Override-only entries (o:1) in t.items hold a sub-habit's tab colour / hidden / time without picking it. */
+  function pkV(v) { v = v || view(); return v === 'star' || isTabV(v); }
+  function vCfg(v) { v = v || view(); if (v === 'star') return S.d.settings.starShow || (S.d.settings.starShow = {}); var t = isTabV(v) && S.tab(v); return t ? (t.show || (t.show = {})) : null; }
+  function vCust(v) { var c = vCfg(v); return c && c.custom ? c : null; }
+  function vSave(v) { v = v || view(); if (v === 'star') S.saveSettings(); else { var t = S.tab(v); if (t) S.putTab(t); } }
+  function noTimeV() { var c = vCust(); return !!(c && c.noTime); }
+  function pkEnt(v, id) { var m = pkMap(v); if (!m[id]) m[id] = v === 'star' ? {} : { o: 1 }; return m[id]; }   // entry to hold an override
+  function snap(it, id) {   // v5.37: a pick takes the habit's colour once, then keeps its own
+    var h = S.habit(id); if (!h) return; it[id] = it[id] || {}; delete it[id].o; if (!it[id].col) it[id].col = h.color || '#5BC48A';
+    subs(id).forEach(function (x) { if (!it[x.id]) it[x.id] = { o: 1, col: x.color || h.color }; else if (!it[x.id].col) it[x.id].col = x.color || h.color; });
+  }
+  function unpick(it, id) { delete it[id]; subs(id).forEach(function (x) { if (it[x.id] && it[x.id].o) delete it[x.id]; }); }
   function soloIn(h, v) {
     if (!h.parent || !S.habit(h.parent) || !ownIn(h, v) || ownIn(S.habit(h.parent), v)) return false;
     var p = pick(h, v); if (p && p.solo != null) return !!p.solo;
@@ -449,10 +464,10 @@
   function vRank(v, id) { var o = v === 'star' ? S.d.settings.starOrd || [] : (S.tab(v) || {}).ord || [], i = o.indexOf(id); return i < 0 ? 1e6 + ((S.habit(id) || {}).order || 0) : i; }
   function pickSet(t, ids, on) {   // add / remove picks (archived habits can't be added)
     var it = t.items = t.items || {};
-    ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (on) { if (!it[id] && !h.archived) it[id] = {}; } else { delete it[id]; if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
+    ids.forEach(function (id) { var h = S.habit(id); if (!h) return; if (on) { if ((!it[id] || it[id].o) && !h.archived) snap(it, id); } else { unpick(it, id); if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
     S.putTab(t);
   }
-  function tabN(t) { return Object.keys(t.items || {}).filter(function (id) { var h = S.habit(id); return h && !h.archived; }).length; }
+  function tabN(t) { return Object.keys(t.items || {}).filter(function (id) { var h = S.habit(id); return h && !h.archived && !t.items[id].o; }).length; }
   /* ---- v5.22 Sprint tabs. t.sprint = { from, to ('YYYY-MM-DD'), color (rows coloured by progress), items: { habitId: { m, t, b } } }.
      A sprint owns no habits: it lists habits or whole groups from other tabs (like Starred); ticks are the same entries.
      m = 'day' (target per day) | 'total' (over the sprint) for measurable; 'pct' (% of days) | 'times' for yes/no and count groups.
@@ -639,7 +654,13 @@
   var SHOW_LOOK = { times: 1, heads: 1, strip: 1 };   // v5.30: display switches — not kinds, never hide a habit
   var SHOW_DEF = { done: true, skip: true, rest: false, late: true, past: false, soon: false, gone: false, hid: false, arch: false, bad: true, times: true, heads: true, strip: true };
   var SELOK = { done: 1, skip: 1, rest: 1, late: 1, gone: 1 };   // in select mode these stay visible
-  function SH() {
+  function SH(v) {   // v5.37: the open tab / Starred may keep its own switches
+    var g = SHg(), c = vCust(v); if (!c) return g;
+    if (!c.s) c.s = JSON.parse(JSON.stringify(g));
+    Object.keys(SHOW_DEF).forEach(function (k) { if (c.s[k] === undefined) c.s[k] = g[k]; });
+    c.s.strip = g.strip; c.s.arch = g.arch; return c.s;   // tab strip and Archived stay Home-wide
+  }
+  function SHg() {
     var f = S.d.settings;
     if (!f.show) f.show = { done: !f.hideEntered, skip: !f.hideSkipped, rest: f.hideNotDue === false, late: true, past: false, soon: false, gone: false, arch: !f.hideArchived };   // from the old Filter
     if (!f.showPin) f.showPin = ['done', 'late', 'past', 'soon', 'bad'];
@@ -698,6 +719,7 @@
   var shwEdit = false;
   function drawShow() {
     var s = SH(), f = S.d.settings, u = S.d.ui, full = shwEdit || u.showFull, dsc = u.showDesc === true, pin = f.showPin, n = showCounts(view()), g = '', h = '';
+    var vv = view(), pv = pkV(vv), c = pv ? vCfg(vv) : null, cu = !!(c && c.custom), nt = cu && c.noTime, HW = { strip: 1, arch: 1 };   // v5.37
     SHOW.forEach(function (x) {
       var k = x[0]; if (k === 'skip' && !f.skipDays) return;
       if (!full && pin.indexOf(k) < 0) return;
@@ -705,20 +727,29 @@
       var p = pin.indexOf(k) >= 0, ct = SHOW_LOOK[k] ? '<em class="shc"></em>' : '<em class="shc">' + (n[k] || 0) + '</em>';
       h += shwEdit
         ? '<button class="mi shr" data-act="shwPin" data-k="' + k + '"><span class="box' + (p ? ' on' : '') + '">' + (p ? ICON.check : '') + '</span><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '</button>'
-        : '<button class="mi shr" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
+        : '<button class="mi shr' + ((pv && !cu && !HW[k]) || (nt && (k === 'past' || k === 'soon')) ? ' lk' : '') + '" data-act="shwT" data-k="' + k + '" aria-pressed="' + !!s[k] + '"><span class="tx"><b>' + x[2] + '</b>' + (nt && (k === 'past' || k === 'soon') ? '<small>Off while this list ignores times</small>' : dsc ? '<small>' + x[3] + '</small>' : '') + '</span>' + ct + '<i class="tgl' + (s[k] ? ' on' : '') + '"></i></button>';
     });
     if (!h) h = '<p class="small muted shn">Tap the pen to pick the switches you want here.</p>';
-    var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : 'On your list') + '</b>' +
+    var vn = vv === 'star' ? 'Starred' : pv ? S.tab(vv).name : '';
+    var top = pv && !shwEdit ? '<div class="shv"><div class="seg"><button class="' + (cu ? '' : 'on') + '" data-act="shwMode" data-m="0">Same as Home</button><button class="' + (cu ? 'on' : '') + '" data-act="shwMode" data-m="1">Custom for this ' + (vv === 'star' ? 'list' : 'tab') + '</button></div>' +
+      (cu ? '<div class="shg">Times</div><div class="seg"><button class="' + (nt ? '' : 'on') + '" data-act="shwTime" data-m="0">Use habit times</button><button class="' + (nt ? 'on' : '') + '" data-act="shwTime" data-m="1">Ignore – always show</button></div>' : '') + '</div>' : '';
+    var html = '<div class="shh"><b>' + (shwEdit ? 'Pick your short list' : pv ? 'Show · ' + esc(vn) : 'On your list') + '</b>' +
       (shwEdit ? '' : '<span class="shm"><button data-act="shwFull" data-m="0" class="' + (u.showFull ? '' : 'on') + '">Mine</button><button data-act="shwFull" data-m="1" class="' + (u.showFull ? 'on' : '') + '">All</button></span>') +
       '<button class="dtl" data-act="shwDesc" aria-pressed="' + dsc + '"><i class="tgl' + (dsc ? ' on' : '') + '"></i>Notes</button>' +
       '<button class="ib' + (shwEdit ? ' lit' : '') + '" data-act="shwPen" aria-label="' + (shwEdit ? 'Done' : 'Choose short list') + '">' + (shwEdit ? ICON.check : ICON.pen) + '</button></div>' +
-      '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : n.tuck ? n.tuck + ' tucked away' : 'Everything showing') + '</div>' + h +
+      top + '<div class="shs">' + (shwEdit ? 'Checked items show when you tap the eye' : (pv && !cu ? 'Following Home · ' : '') + (n.tuck ? n.tuck + ' tucked away' : 'Everything showing')) + '</div>' + h +
       (shwEdit ? '' : '<div class="shf"><a href="#" data-act="shwAll">Show everything</a><a href="#" class="muted" data-act="shwUsual">Back to my usual</a></div>');
     if (sheetOpen === 'show') { sheet.innerHTML = html; } else showSheet('show', html, 'shw');
     var rb = root.querySelector('.rib'); sheet.style.bottom = rb ? Math.max(0, innerHeight - rb.getBoundingClientRect().top) + 'px' : '';
     document.body.classList.add('shw');
   }
 
+  function drawSelTime(f, t) {   // v5.37 bulk time window for the open tab / Starred
+    var v = view(), nm = v === 'star' ? 'Starred' : S.tab(v).name;
+    showSheet('seltime', '<h3>Time window in ' + esc(nm) + ' only</h3><div class="fl"><div class="two">' + edgeField('BFrom', 'Show from', f) + edgeField('BTo', 'Hide after', t) + '</div>' +
+      (noTimeV() ? '<span class="small muted">This list is set to ignore times (eye → Times), so windows won’t hide anything here until you switch that back.</span>' : '') + '</div>' +
+      '<div class="row sb"><button class="btn" data-act="selTimeSet" data-v="clear">Use habit’s own</button><span><button class="btn" data-act="close">Cancel</button> <button class="btn pri" data-act="selTimeSet">Apply</button></span></div>');
+  }
   var App = {
     render: function (resetScroll) {
       var sc = document.getElementById('sc'), keep = sc && !resetScroll ? { l: sc.scrollLeft, t: sc.scrollTop } : null;
@@ -760,21 +791,25 @@
       // Full names; fitChips() swaps inactive tabs to their short names only when the strip runs out of room
       var sOn = stripOn();   // v5.34: the strip holds only his tabs (Home is on the bottom bar); off via the Show drawer
       var chips = '<div class="chips' + (tp ? ' editing' : '') + '" id="chips">' + stripTabs().map(function (t) {
-          return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (t.sprint ? ' spr' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
+          return '<button class="tchip' + (v === t.id ? ' on' : '') + (t.hidden ? ' arch' : '') + (t.sprint ? ' spr' : '') + (t.show && t.show.custom ? ' cust' : '') + (tp && tp.id === t.id ? ' tsel' : '') + '" data-act="goTab" data-tab="' + t.id + '" data-full="' + esc(t.name) + '" data-short="' + esc(t.short || t.name) + '">' + esc(t.name) + '</button>';
         }).join('') + '</div>';   // new tabs: hold any tab → panel → New
       var tpan = tp ? tabPanel() : '';
       var gOn = f.starGroups !== false;
       var tHd = isTabV(v) && !spT ? sprHead(S.tab(v)) : '';
       var vbar = tHd ? '<div class="vbar"><span>' + esc(tHd) + '</span></div>' : spT ? '<div class="vbar spv"><span>' + esc(sprHead(spT)) + '</span><button class="flip" data-act="sprEditOpen" data-tab="' + spT.id + '">Targets ' + ICON.pen + '</button></div>' : v === 'star' ? '<div class="vbar"><span>' + (mode === 'top' ? 'Starred' : '') + '</span><button class="flip" data-act="flipGroups" aria-pressed="' + gOn + '">Show groups<i class="tgl' + (gOn ? ' on' : '') + '"></i></button></div>'
         : mode === 'top' && VIEW_NAME[v] && v !== 'all' ? '<div class="vlabel">' + VIEW_NAME[v] + '</div>' : '';
+      var pkB = pkV(v);   // v5.37: in a tab / Starred the bar edits that list only
       if (sel) bar = '<header class="top selbar"><button class="ib" data-act="selDone" aria-label="Done">' + ICON.back + '</button><h1>' + n + '</h1>' +
         (n === 1 ? '<button class="ib" data-act="selEdit" aria-label="Edit">' + ICON.pen + '</button>' : '') +
-        '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>' +
+        (pkB ? '' : '<button class="ib' + (allStarred() ? ' lit' : '') + '" data-act="selStar" aria-label="' + (allStarred() ? 'Unstar' : 'Star') + '"' + (n ? '' : ' disabled') + '>' + (allStarred() ? ICON.starOn : ICON.star) + '</button>') +
         (S.d.settings.skipDays ? '<button class="ib' + (allSkipped() ? ' lit' : '') + '" data-act="selSkip" aria-label="' + (allSkipped() ? 'Unskip today' : 'Skip today') + '"' + (n ? '' : ' disabled') + '>' + ICON.skip + '</button>' : '') +
-        '<button class="ib" data-act="sprAddOpen" aria-label="Add to tab"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>' +
+        (pkB ? '' : '<button class="ib" data-act="sprAddOpen" aria-label="Add to tab"' + (n ? '' : ' disabled') + '>' + ICON.flag + '</button>') +
         '<button class="ib" data-act="selHide" aria-label="' + (allHidden() ? 'Unhide' : 'Hide') + '"' + (n ? '' : ' disabled') + '>' + (allHidden() ? ICON.unhide : ICON.hide) + '</button>' +
-        '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
-        '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>' +
+        (pkB ? '<button class="ib" data-act="selColor" aria-label="Colour here"' + (n ? '' : ' disabled') + '>' + ICON.palette + '</button>' +
+          '<button class="ib" data-act="selTime" aria-label="Time window here"' + (n ? '' : ' disabled') + '>' + ICON.clock + '</button>' +
+          '<button class="ib" data-act="selRemove" aria-label="' + (v === 'star' ? 'Unstar' : 'Remove from tab') + '"' + (n ? '' : ' disabled') + '>' + ICON.rmTab + '</button>' :
+          '<button class="ib" data-act="selArchive" aria-label="' + (allArchived() ? 'Unarchive' : 'Archive') + '"' + (n ? '' : ' disabled') + '>' + (allArchived() ? ICON.unarchive : ICON.archive) + '</button>' +
+        '<button class="ib" data-act="selDelete" aria-label="Delete"' + (n ? '' : ' disabled') + '>' + ICON.bin + '</button>') +
         '<button class="ib" data-act="selMore" aria-label="More"' + (n ? '' : ' disabled') + '>' + ICON.more + '</button></header>';
       else if (mode === 'top') bar = '<header class="top' + (sOn ? ' tstrip' : '') + '">' + logo + (sOn ? chips : '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>') + syncBtn() + '<button class="ib" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>' + tpan + vbar;
       else bar = '<header class="top">' + logo + '<h1>' + esc(VIEW_NAME[v] || S.tab(v).name) + '</h1>' +
@@ -1973,8 +2008,8 @@
     pkSave: function () {
       var o = App._pick, t = o.t, it = t.items = t.items || {}, on = o.on, add = 0;
       Object.keys(on).forEach(function (id) { var h = S.habit(id); if (h && h.parent && on[h.parent]) delete on[id]; });   // the whole group is picked
-      Object.keys(it).forEach(function (id) { if (!on[id]) { delete it[id]; if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
-      Object.keys(on).forEach(function (id) { if (!it[id] && S.habit(id) && !S.habit(id).archived) { it[id] = {}; add++; } });
+      Object.keys(it).forEach(function (id) { if (!on[id] && it[id] && !it[id].o) { unpick(it, id); if (t.sprint && t.sprint.items) delete t.sprint.items[id]; } });
+      Object.keys(on).forEach(function (id) { if ((!it[id] || it[id].o) && S.habit(id) && !S.habit(id).archived) { snap(it, id); add++; } });
       S.putTab(t); closeSheet(function () { App.render(); if (add) App.toast('Added ' + add + ' to ' + t.name); });
     },
     tgTog: function (el) { var i = document.getElementById('spTg'); i.classList.toggle('on'); var on = i.classList.contains('on'); el.setAttribute('aria-pressed', on); document.getElementById('spBox').classList.toggle('tgoff', !on); },
@@ -2000,6 +2035,10 @@
     selHide: function () {
       var ids = Object.keys(sel), on = !allHidden();
       var v = view(), pm = (v === 'star' || isTabV(v)) && pkMap(v), tch = false;
+      if (pm) {   // v5.37: in a tab / Starred, Hide only hides it on this list
+        ids.forEach(function (id) { if (S.habit(id)) pkEnt(v, id).hid = on; }); vSave(v);
+        return selEnd(function () { App.toast((on ? 'Hidden here: ' : 'Shown here: ') + ids.length + (on && !SH().hid ? ' — the eye below shows them' : '')); });
+      }
       ids.forEach(function (id) { var h = S.habit(id); if (!h) return; h.hid = on; S.putHabit(h); if (pm && pm[id] && pm[id].hid != null) { delete pm[id].hid; tch = true; } });   // v5.35: a list's own Shown/Hidden no longer overrides the bar's Hide
       if (tch) { if (v === 'star') S.saveSettings(); else S.putTab(S.tab(v)); }
       selEnd(function () { App.toast((on ? 'Hidden ' : 'Unhidden ') + ids.length + (on && !SH().hid ? ' — the eye below shows them' : '')); });
@@ -2014,12 +2053,16 @@
     },
     selStar: function () {
       var ids = Object.keys(sel), on = !allStarred();
-      ids.forEach(function (id) { var h = S.habit(id); if (h) { h.star = on; S.putHabit(h); } });
+      ids.forEach(function (id) { var h = S.habit(id); if (h) { h.star = on; S.putHabit(h); if (on) { var m = pkMap('star'); if (!m[id]) m[id] = {}; if (!m[id].col) m[id].col = h.color; } } });   // v5.37 Starred takes the colour once
+      if (on) S.saveSettings();
       selEnd(function () { App.toast((on ? 'Starred ' : 'Unstarred ') + ids.length); });
     },
     selMore: function () {
       var g = Object.keys(sel).some(function (id) { var h = S.habit(id); return h && isGroup(h); });
-      showSheet('selmore', '<button class="mi" data-act="selColor">Change colour</button>' +
+      var pk = pkV();
+      showSheet('selmore', (pk ? (view() === 'star' ? '' : '<button class="mi" data-act="selGo" data-a="selStar">' + (allStarred() ? 'Unstar' : 'Star') + '</button>') +
+          '<button class="mi" data-act="selGo" data-a="selArchive">' + (allArchived() ? 'Unarchive' : 'Archive') + ' (everywhere)</button><button class="mi" data-act="selGo" data-a="selDelete">Delete (everywhere)</button>'
+        : '<button class="mi" data-act="selColor">Change colour</button>') +
         '<button class="mi" data-act="sprAddOpen">Add to tab…</button>' +
         (selIn().length ? '<button class="mi" data-act="selIntoAsk">Put into a group…</button>' : '') +
         (selOut().length ? '<button class="mi" data-act="selOut">Take out of group</button>' : '') +
@@ -2064,13 +2107,33 @@
     doneToggle: function () { ribGo('done'); },
     viewArch: function () { toggleView('arch'); },
     shw: function () { if (sheetOpen === 'show') closeSheet(); else if (sheetOpen) closeSheet(drawShow); else { drawShow(); App.render(); } },
-    shwT: function (el) { var s = SH(), k = el.dataset.k; s[k] = !s[k]; S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
+    shwT: function (el) {
+      var k = el.dataset.k, hw = k === 'strip' || k === 'arch', cu = vCust();
+      if (pkV() && !cu && !hw) return App.toast('Following Home — tap Custom to change it here');   // v5.37
+      if (cu && cu.noTime && (k === 'past' || k === 'soon')) return App.toast('This list ignores times — tap Use habit times first');
+      var s = hw ? SHg() : SH(); s[k] = !s[k]; S.d.ui.showStash = null;
+      if (cu && !hw) vSave(); else S.saveSettings(); S.saveUi(); App.render();
+    },
+    shwMode: function (el) {   // v5.37: Same as Home / Custom for this tab (the custom set is kept when switching back)
+      var c = vCfg(); if (!c) return; c.custom = el.dataset.m === '1'; if (c.custom && !c.s) c.s = JSON.parse(JSON.stringify(SHg()));
+      vSave(); App.render();
+    },
+    shwTime: function (el) { var c = vCust(); if (!c) return; c.noTime = el.dataset.m === '1'; vSave(); App.render(); },
     shwDesc: function () { S.d.ui.showDesc = !(S.d.ui.showDesc === true); S.saveUi(); drawShow(); },
     shwFull: function (el) { S.d.ui.showFull = el && el.dataset.m ? el.dataset.m === '1' : !S.d.ui.showFull; S.saveUi(); drawShow(); },
     shwPen: function () { shwEdit = !shwEdit; if (!shwEdit) { S.d.ui.showFull = false; S.saveUi(); } drawShow(); },   // v5.35: Done shows the short list just picked
     shwPin: function (el) { var p = S.d.settings.showPin, k = el.dataset.k, i = p.indexOf(k); if (i < 0) p.push(k); else p.splice(i, 1); S.saveSettings(); drawShow(); },
-    shwAll: function () { var s = SH(), st = {}; Object.keys(SHOW_DEF).forEach(function (k) { st[k] = !!s[k]; s[k] = true; }); S.d.ui.showStash = st; S.saveSettings(); S.saveUi(); App.render(); },
-    shwUsual: function () { var st = S.d.ui.showStash || SHOW_DEF; S.d.settings.show = JSON.parse(JSON.stringify(st)); S.d.ui.showStash = null; S.saveSettings(); S.saveUi(); App.render(); },
+    shwAll: function () {
+      if (pkV() && !vCust()) return App.toast('Following Home — tap Custom to change it here');
+      var cu = vCust(), s = SH(), st = {}; Object.keys(SHOW_DEF).forEach(function (k) { st[k] = !!s[k]; if (!cu || (k !== 'strip' && k !== 'arch')) s[k] = true; });
+      S.d.ui.showStash = st; S.d.ui.stashV = cu ? view() : ''; if (cu) vSave(); else S.saveSettings(); S.saveUi(); App.render();
+    },
+    shwUsual: function () {
+      if (pkV() && !vCust()) return App.toast('Following Home — tap Custom to change it here');
+      var cu = vCust(), sv = S.d.ui.stashV || '', st = (cu ? sv === view() : !sv) && S.d.ui.showStash || (cu ? SHg() : SHOW_DEF), cp = JSON.parse(JSON.stringify(st));
+      if (cu) { delete cp.strip; delete cp.arch; cu.s = cp; vSave(); } else { S.d.settings.show = cp; S.saveSettings(); }
+      S.d.ui.showStash = null; S.saveUi(); App.render();
+    },
     flipGroups: function () { S.d.settings.starGroups = S.d.settings.starGroups === false; S.saveSettings(); App.render(); },
     tabsSheet: openTabsSheet,
     tpDone: function () { closeTp(); },
@@ -2111,13 +2174,41 @@
     selEdit: function () { var id = Object.keys(sel)[0]; selEnd(function () { openEdit(id); }); },
     selColor: function () {
       if (sheetOpen) return closeSheet(actions.selColor);
-      showSheet('color', '<h3>Change colour</h3><div class="sw">' + COLORS.map(function (c) {
+      var v = view(), pk = pkV(v), nm = v === 'star' ? 'Starred' : pk ? S.tab(v).name : '';
+      showSheet('color', '<h3>' + (pk ? 'Colour in ' + esc(nm) + ' only' : 'Change colour') + '</h3><div class="sw">' + COLORS.map(function (c) {
         return '<button class="dot" style="background:' + c + '" data-act="pickColor" data-v="' + c + '" aria-label="Colour ' + c + '"></button>';
-      }).join('') + '</div><div class="row end"><button class="btn" data-act="close">Cancel</button></div>');
+      }).join('') + '</div><div class="row' + (pk ? ' sb' : ' end') + '">' + (pk ? '<button class="btn" data-act="selColHome">Restore Home colours</button>' : '') + '<button class="btn" data-act="close">Cancel</button></div>');
     },
     pickColor: function (el) {
       var ids = Object.keys(sel), c = el.dataset.v;
+      var v = view();
+      if (pkV(v)) return closeSheet(function () { ids.forEach(function (id) { if (S.habit(id)) pkEnt(v, id).col = c; }); vSave(v); selEnd(); });   // v5.37: this list only
       closeSheet(function () { ids.forEach(function (id) { var h = S.habit(id); if (h) { h.color = c; S.putHabit(h); } }); selEnd(); });
+    },
+    selGo: function (el) { var a = el.dataset.a; closeSheet(function () { actions[a](); }); },
+    selColHome: function () {   // v5.37: back to each habit's current Home colour
+      var ids = Object.keys(sel), v = view();
+      closeSheet(function () { ids.forEach(function (id) { var h = S.habit(id); if (h) pkEnt(v, id).col = h.color || '#5BC48A'; }); vSave(v); selEnd(function () { App.toast('Home colours restored: ' + ids.length); }); });
+    },
+    selTime: function () {
+      if (sheetOpen) return closeSheet(actions.selTime);
+      var v = view(), ids = Object.keys(sel), w = ids.length === 1 && pick(S.habit(ids[0])) && pick(S.habit(ids[0])).win || {};
+      drawSelTime(w.from || '', w.to || '');
+    },
+    selTimeSet: function (el) {
+      var v = view(), ids = Object.keys(sel), clr = el.dataset.v === 'clear', w = clr ? null : { from: edgeRead('BFrom') || '', to: edgeRead('BTo') || '' };
+      if (w && !w.from && !w.to) w = null;
+      closeSheet(function () {
+        ids.forEach(function (id) { if (!S.habit(id)) return; var e = pkEnt(v, id); if (w) e.win = w; else delete e.win; }); vSave(v);
+        selEnd(function () { App.toast(w ? 'Time window set here: ' + ids.length : 'Back to the habit’s own time: ' + ids.length); });
+      });
+    },
+    selRemove: function () {
+      var v = view(), ids = Object.keys(sel), n = 0, grp = 0;
+      if (v === 'star') { ids.forEach(function (id) { var h = S.habit(id); if (h && h.star) { h.star = false; S.putHabit(h); n++; } else if (h) grp++; }); }
+      else { var t = S.tab(v); if (!t) return; var it = t.items = t.items || {};
+        ids.forEach(function (id) { if (it[id] && !it[id].o) { unpick(it, id); if (t.sprint && t.sprint.items) delete t.sprint.items[id]; n++; } else grp++; }); S.putTab(t); }
+      selEnd(function () { App.toast((v === 'star' ? 'Unstarred ' : 'Removed ') + n + (grp ? ' · ' + grp + ' came with their group — remove the group' : '')); });
     },
     selArchive: function () {
       var ids = Object.keys(sel), arch = !allArchived();
@@ -2379,7 +2470,7 @@
   });
   document.addEventListener('change', function (e) {
     var a = e.target.dataset && e.target.dataset.act;
-    if (a === 'edgeKind') { readInputs(); var y = sheet.scrollTop; drawEdit(); sheet.scrollTop = y; }
+    if (a === 'edgeKind') { if (sheetOpen === 'seltime') { drawSelTime(edgeRead('BFrom') || '', edgeRead('BTo') || ''); return; } readInputs(); var y = sheet.scrollTop; drawEdit(); sheet.scrollTop = y; }
     if (a === 'fltTab') { fltRead(); var ft = S.tab(e.target.value); App._flt.ft = e.target.value; if (ft) { App._flt.on = {}; Object.keys(ft.items || {}).forEach(function (q) { App._flt.on[q] = 1; }); if (!App._flt.name) App._flt.name = ft.name; if (ft.from) { App._flt.from = ft.from; App._flt.to = ft.to || ''; } } drawFilter(); }
     else if (a === 'ptCity') ptFill(e.target.value);
     else if (a === 'ptMethod') ptPreview();
